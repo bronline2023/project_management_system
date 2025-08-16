@@ -1,0 +1,594 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Recruitment Poster Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #a0a0a0;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #808080;
+        }
+        .dynamic-text-container {
+            word-break: break-word;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 0.5rem;
+        }
+    </style>
+</head>
+<body class="flex flex-col lg:flex-row min-h-screen">
+    <div class="w-full lg:w-1/3 p-4 bg-gray-50 rounded-lg shadow-inner overflow-y-auto max-h-screen custom-scrollbar">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Poster Settings</h2>
+        <div class="mb-8">
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">Core Poster Details</h3>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Organization Name:</span>
+                <input type="text" id="organizationName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2" placeholder="e.g., Google Inc.">
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Recruitment Title:</span>
+                <input type="text" id="recruitmentTitle" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2" placeholder="e.g., Combined Graduate Level Examination">
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Number of Vacancies:</span>
+                <input type="text" id="numberOfVacancies" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2" placeholder="e.g., 2500 Vacancies Across Various Ministries">
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Application Start Date:</span>
+                <input type="date" id="applicationStartDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2">
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Application Deadline:</span>
+                <input type="date" id="applicationDeadline" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2">
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Eligibility Criteria:</span>
+                <textarea id="eligibilityCriteria" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2 h-24 resize-y" placeholder="e.g., Bachelor's Degree in any discipline from a recognized University."></textarea>
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Age Limit:</span>
+                <textarea id="ageLimit" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2 h-20 resize-y" placeholder="e.g., 18-27 years as on Jan 1, 2025. Age relaxation as per rules."></textarea>
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Fees Details:</span>
+                <textarea id="feesDetails" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2 h-24 resize-y" placeholder="e.g., General/OBC: ₹100, SC/ST/PwBD/Ex-Servicemen: Exempted."></textarea>
+            </label>
+        </div>
+        <div class="mb-8">
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">Website Links & Logos</h3>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Official Website URL (Apply Here):</span>
+                <input type="text" id="officialWebsiteUrl" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2" placeholder="e.g., https://apply.example.com">
+            </label>
+            <label class="block mb-4">
+                <span class="text-gray-700 font-medium">Company Website URL (For more details visit):</span>
+                <input type="text" id="companyWebsiteUrl" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2" placeholder="e.g., https://www.example.com">
+            </label>
+            <div class="mb-4">
+                <span class="text-gray-700 font-medium block mb-2">Official Logo Source (Top-Left):</span>
+                <label class="block mb-2">
+                    <span class="text-sm text-gray-600">Paste URL/SVG Code:</span>
+                    <input type="text" id="officialLogoSource" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" placeholder="e.g., https://example.com/logo.png or <svg>...</svg>">
+                </label>
+                <label class="block">
+                    <span class="text-sm text-gray-600">Upload from Computer:</span>
+                    <input type="file" id="officialLogoUpload" accept="image/*, .svg" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                </label>
+            </div>
+            <div class="mb-4">
+                <span class="text-gray-700 font-medium block mb-2">Company Logo Source (Bottom-Right):</span>
+                <label class="block mb-2">
+                    <span class="text-sm text-gray-600">Paste URL/SVG Code:</span>
+                    <input type="text" id="companyLogoSource" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" placeholder="e.g., https://example.com/company-logo.png or <svg>...</svg>">
+                </label>
+                <label class="block">
+                    <span class="text-sm text-gray-600">Upload from Computer:</span>
+                    <input type="file" id="companyLogoUpload" accept="image/*, .svg" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                </label>
+            </div>
+        </div>
+        <div class="mb-8">
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">Background Design</h3>
+            <select id="backgroundDesign" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 p-2">
+                <option value="default-gradient">Default Gradient</option>
+                <option value="image-like">Image Like Design</option>
+                <option value="abstract-shapes">Abstract Shapes</option>
+                <option value="subtle-grid">Subtle Grid Pattern</option>
+                <option value="wavy-pattern">Wavy Pattern</option>
+                <option value="custom-image">Custom Image</option>
+            </select>
+            <div id="customImageInputs" class="mt-4 hidden">
+                <span class="text-gray-700 font-medium block mb-2">Custom Background Image:</span>
+                <label class="block mb-2">
+                    <span class="text-sm text-gray-600">Paste URL:</span>
+                    <input type="text" id="customBackgroundSource" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2" placeholder="e.g., https://example.com/background.jpg">
+                </label>
+                <label class="block">
+                    <span class="text-sm text-gray-600">Upload from Computer:</span>
+                    <input type="file" id="customBackgroundUpload" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="flex-grow flex flex-col items-center justify-center p-4">
+        <div class="mb-4 text-center">
+            <button id="downloadPosterBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-4 focus:ring-indigo-300">
+                Download Poster
+            </button>
+            <p id="messageDisplay" class="mt-2 text-sm text-gray-600"></p>
+        </div>
+        <div id="posterPreview" class="w-[800px] h-[1131px] bg-white shadow-2xl rounded-lg overflow-hidden relative flex flex-col font-['Inter']">
+            <div class="relative w-full h-1/5 p-8 flex flex-col justify-center items-center text-white text-center bg-gradient-to-r from-indigo-600 to-purple-600">
+                <div class="absolute top-6 left-6 h-40 w-40 bg-white p-2 rounded-lg flex items-center justify-center shadow-lg" id="officialLogoContainer"></div>
+                <div class="w-full pl-40">
+                    <div id="orgNameContainer" class="w-full h-1/2 flex items-center justify-center dynamic-text-container">
+                        <span id="organizationNameDisplay" class="font-extrabold text-4xl drop-shadow-lg">Your Organization Name</span>
+                    </div>
+                    <div id="recruitmentTitleContainer" class="w-full h-1/2 flex items-center justify-center mt-2 dynamic-text-container">
+                        <span id="recruitmentTitleDisplay" class="font-semibold text-2xl drop-shadow-md text-gray-100">Exciting Career Opportunities</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-grow grid grid-cols-3 gap-6 p-8 text-gray-800">
+               
+                <div id="eligibilityContainer" class="bg-white/90 backdrop-blur-sm rounded-xl p-6 flex flex-col shadow-xl border border-blue-200">
+                    <h4 class="font-bold text-blue-700 text-xl mb-3 border-b pb-2 text-center">ELIGIBILITY</h4>
+                    <div class="flex-grow overflow-hidden dynamic-text-container">
+                        <span id="eligibilityCriteriaDisplay" class="text-gray-700 leading-snug text-center font-semibold text-lg">Minimum Bachelor's Degree. See full details on website.</span>
+                    </div>
+                </div>
+                <div id="ageLimitContainer" class="bg-white/90 backdrop-blur-sm rounded-xl p-6 flex flex-col shadow-xl border border-blue-200">
+                    <h4 class="font-bold text-blue-700 text-xl mb-3 border-b pb-2 text-center">AGE LIMIT</h4>
+                    <div class="flex-grow overflow-hidden dynamic-text-container">
+                        <span id="ageLimitDisplay" class="text-gray-700 leading-snug text-center font-semibold text-lg">18-30 years. Age relaxation as per government norms.</span>
+                    </div>
+                </div>
+                <div id="feesDetailsContainer" class="bg-white/90 backdrop-blur-sm rounded-xl p-6 flex flex-col shadow-xl border border-blue-200">
+                    <h4 class="font-bold text-blue-700 text-xl mb-3 border-b pb-2 text-center">FEES DETAILS</h4>
+                    <div class="flex-grow overflow-hidden dynamic-text-container">
+                        <span id="feesDetailsDisplay" class="text-gray-700 leading-snug text-center font-semibold text-lg">General/OBC: ₹100, SC/ST/PwBD/Female: Exempted.</span>
+                    </div>
+                </div>
+				 <div id="vacanciesContainer" class="col-span-3 bg-indigo-600 text-white rounded-xl p-6 flex items-center justify-center shadow-xl">
+                    <span id="numberOfVacanciesDisplay" class="font-black text-3xl text-center leading-tight">100+ Vacancies Across Departments</span>
+                </div>
+            </div>
+            <div class="w-full flex-shrink-0 p-8 flex flex-col items-center justify-center bg-gray-50">
+                <div class="w-full bg-orange-600 text-white rounded-xl py-5 px-6 mb-6 text-center shadow-lg">
+                    <p class="font-extrabold text-3xl mb-2 leading-none">DEADLINE: <span id="deadlineDisplay"></span></p>
+                    <p class="text-base font-medium">Apply Here: <span id="officialWebsiteUrlDisplay" class="underline"></span></p>
+                </div>
+                <div class="w-full flex justify-around text-center text-gray-700 mb-6">
+                    <div class="bg-white rounded-lg p-4 shadow-md flex-1 mx-3 border border-gray-200">
+                        <p class="text-sm font-semibold text-gray-500">START DATE</p>
+                        <p class="text-3xl font-bold text-indigo-700" id="startDateDisplay"></p>
+                    </div>
+                    <div class="bg-white rounded-lg p-4 shadow-md flex-1 mx-3 border border-gray-200">
+                        <p class="text-sm font-semibold text-gray-500">END DATE</p>
+                        <p class="text-3xl font-bold text-orange-600" id="endDateDisplay"></p>
+                    </div>
+                </div>
+                <div class="w-full flex justify-between items-end mt-auto text-gray-600 text-sm">
+                    <div class="flex-grow text-left">
+                        <p class="font-semibold text-lg">For more details visit: <a href="#" target="_blank" rel="noopener noreferrer" class="text-gray-800 hover:underline" id="companyWebsiteUrlDisplay"></a></p>
+                    </div>
+                    <div class="h-36 w-36 bg-white p-2 rounded-lg flex items-center justify-center shadow-md" id="companyLogoContainer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            const els = {};
+            const getEl = (id) => {
+                const el = document.getElementById(id);
+                if (!el) console.warn(`Element with ID '${id}' not found.`);
+                return el;
+            };
+            const inputElementIds = [
+                'organizationName', 'recruitmentTitle', 'numberOfVacancies',
+                'applicationStartDate', 'applicationDeadline', 'eligibilityCriteria',
+                'ageLimit', 'feesDetails', 'officialWebsiteUrl', 'companyWebsiteUrl',
+                'officialLogoSource', 'companyLogoSource', 'backgroundDesign',
+                'customBackgroundSource'
+            ];
+            inputElementIds.forEach(id => els[id] = getEl(id));
+            els.officialLogoUpload = getEl('officialLogoUpload');
+            els.companyLogoUpload = getEl('companyLogoUpload');
+            els.customBackgroundUpload = getEl('customBackgroundUpload');
+            els.customImageInputs = getEl('customImageInputs');
+            els.organizationNameDisplay = getEl('organizationNameDisplay');
+            els.recruitmentTitleDisplay = getEl('recruitmentTitleDisplay');
+            els.numberOfVacanciesDisplay = getEl('numberOfVacanciesDisplay');
+            els.deadlineDisplay = getEl('deadlineDisplay');
+            els.officialWebsiteUrlDisplay = getEl('officialWebsiteUrlDisplay');
+            els.startDateDisplay = getEl('startDateDisplay');
+            els.endDateDisplay = getEl('endDateDisplay');
+            els.eligibilityCriteriaDisplay = getEl('eligibilityCriteriaDisplay');
+            els.ageLimitDisplay = getEl('ageLimitDisplay');
+            els.feesDetailsDisplay = getEl('feesDetailsDisplay');
+            els.officialLogoContainer = getEl('officialLogoContainer');
+            els.companyLogoContainer = getEl('companyLogoContainer');
+            els.posterPreview = getEl('posterPreview');
+            els.downloadPosterBtn = getEl('downloadPosterBtn');
+            els.messageDisplay = getEl('messageDisplay');
+            els.orgNameContainer = getEl('orgNameContainer');
+            els.recruitmentTitleContainer = getEl('recruitmentTitleContainer');
+            els.vacanciesContainer = getEl('vacanciesContainer');
+            els.eligibilityContainer = getEl('eligibilityContainer');
+            els.ageLimitContainer = getEl('ageLimitContainer');
+            els.feesDetailsContainer = getEl('feesDetailsContainer');
+            els.companyWebsiteUrlDisplay = getEl('companyWebsiteUrlDisplay');
+
+            let currentSettings = {
+                organizationName: 'Your Organization Name',
+                recruitmentTitle: 'Exciting Career Opportunities',
+                numberOfVacancies: '100+ Vacancies Across Departments',
+                applicationStartDate: new Date().toISOString().split('T')[0],
+                applicationDeadline: (() => {
+                    const d = new Date();
+                    d.setMonth(d.getMonth() + 1);
+                    return d.toISOString().split('T')[0];
+                })(),
+                eligibilityCriteria: 'Minimum Bachelor\'s Degree. See full details on website.',
+                ageLimit: '18-30 years. Age relaxation as per government norms.',
+                feesDetails: 'General/OBC: ₹100, SC/ST/PwBD/Female: Exempted.',
+                officialWebsiteUrl: 'https://apply.example.com',
+                companyWebsiteUrl: 'https://www.example.com',
+                officialLogoSource: `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#4c51bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9.5 16h5"/><path d="M9.5 12h5"/><path d="M9.5 8h5"/><line x1="12" x2="12" y1="2" y2="22"/></svg>`,
+                companyLogoSource: `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#7b3dcc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-briefcase"><rect width="18" height="14" x="3" y="4" rx="2"/><path d="M17 4h3a2 2 0 0 1 0 4H3a2 2 0 0 1 0-4h3"/><path d="M12 12v.01"/></svg>`,
+                backgroundDesign: 'default-gradient',
+                customBackgroundSource: '',
+            };
+
+            const formatDate = (dateString) => {
+                if (!dateString) return '';
+                const options = { year: 'numeric', month: 'short', day: 'numeric' };
+                return new Date(dateString).toLocaleDateString(undefined, options);
+            };
+
+            const adjustFontSize = (textElement, containerElement, initialFontSize, minFontSize) => {
+                if (!textElement || !containerElement) return;
+                let fontSize = initialFontSize;
+                textElement.style.fontSize = `${fontSize}px`;
+                textElement.style.lineHeight = '1.2';
+                while (
+                    (containerElement.scrollHeight > containerElement.clientHeight || 
+                     containerElement.scrollWidth > containerElement.clientWidth) &&
+                    fontSize > minFontSize
+                ) {
+                    fontSize -= 2;
+                    textElement.style.fontSize = `${fontSize}px`;
+                }
+            };
+
+            const renderLogo = (containerElement, source) => {
+                if (!containerElement) return;
+                containerElement.innerHTML = '';
+                if (!source) return;
+                if (source.trim().startsWith('<svg') && source.trim().endsWith('</svg>')) {
+                    const svgWrapper = document.createElement('div');
+                    svgWrapper.className = "h-full w-full object-contain";
+                    svgWrapper.innerHTML = source;
+                    containerElement.appendChild(svgWrapper);
+                } else {
+                    const img = document.createElement('img');
+                    img.src = source;
+                    img.alt = "Logo";
+                    img.className = "h-full w-full object-contain";
+                    img.onerror = () => {
+                        img.onerror = null;
+                        img.src = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Crect width='60' height='60' fill='%23cccccc'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-size='20' fill='%23333333'%3EError%3C/text%3E%3C/svg%3E`;
+                    };
+                    containerElement.appendChild(img);
+                }
+            };
+
+            const updatePosterPreview = () => {
+                if (els.organizationNameDisplay) els.organizationNameDisplay.textContent = currentSettings.organizationName;
+                if (els.recruitmentTitleDisplay) els.recruitmentTitleDisplay.textContent = currentSettings.recruitmentTitle;
+                if (els.numberOfVacanciesDisplay) els.numberOfVacanciesDisplay.textContent = currentSettings.numberOfVacancies;
+                if (els.eligibilityCriteriaDisplay) els.eligibilityCriteriaDisplay.textContent = currentSettings.eligibilityCriteria;
+                if (els.ageLimitDisplay) els.ageLimitDisplay.textContent = currentSettings.ageLimit;
+                if (els.feesDetailsDisplay) els.feesDetailsDisplay.textContent = currentSettings.feesDetails;
+                if (els.deadlineDisplay) els.deadlineDisplay.textContent = formatDate(currentSettings.applicationDeadline);
+                if (els.startDateDisplay) els.startDateDisplay.textContent = formatDate(currentSettings.applicationStartDate);
+                if (els.endDateDisplay) els.endDateDisplay.textContent = formatDate(currentSettings.applicationDeadline);
+                if (els.officialWebsiteUrlDisplay) els.officialWebsiteUrlDisplay.textContent = currentSettings.officialWebsiteUrl;
+                if (els.companyWebsiteUrlDisplay) {
+                    els.companyWebsiteUrlDisplay.textContent = currentSettings.companyWebsiteUrl;
+                    els.companyWebsiteUrlDisplay.href = currentSettings.companyWebsiteUrl;
+                }
+                renderLogo(els.officialLogoContainer, currentSettings.officialLogoSource);
+                renderLogo(els.companyLogoContainer, currentSettings.companyLogoSource);
+                applyBackgroundStyle(els.posterPreview, currentSettings.backgroundDesign, currentSettings.customBackgroundSource);
+                setTimeout(() => {
+                    if (els.orgNameContainer && els.organizationNameDisplay) adjustFontSize(els.organizationNameDisplay, els.orgNameContainer, 40, 10);
+                    if (els.recruitmentTitleContainer && els.recruitmentTitleDisplay) adjustFontSize(els.recruitmentTitleDisplay, els.recruitmentTitleContainer, 24, 10);
+                    if (els.vacanciesContainer && els.numberOfVacanciesDisplay) adjustFontSize(els.numberOfVacanciesDisplay, els.vacanciesContainer, 36, 10);
+                    const eligibilityTextContainer = els.eligibilityContainer ? els.eligibilityContainer.querySelector('.dynamic-text-container') : null;
+                    if (els.eligibilityCriteriaDisplay && eligibilityTextContainer) adjustFontSize(els.eligibilityCriteriaDisplay, eligibilityTextContainer, 18, 10);
+                    const ageLimitTextContainer = els.ageLimitContainer ? els.ageLimitContainer.querySelector('.dynamic-text-container') : null;
+                    if (els.ageLimitDisplay && ageLimitTextContainer) adjustFontSize(els.ageLimitDisplay, ageLimitTextContainer, 18, 10);
+                    const feesDetailsTextContainer = els.feesDetailsContainer ? els.feesDetailsContainer.querySelector('.dynamic-text-container') : null;
+                    if (els.feesDetailsDisplay && feesDetailsTextContainer) adjustFontSize(els.feesDetailsDisplay, feesDetailsTextContainer, 18, 10);
+                }, 50);
+            };
+
+            const applyBackgroundStyle = (element, design, customSource) => {
+                if (!element) return;
+                element.style.background = '';
+                element.style.backgroundImage = '';
+                element.style.backgroundColor = '';
+                element.style.backgroundSize = '';
+                element.style.backgroundRepeat = '';
+                element.style.backgroundPosition = '';
+                switch (design) {
+                    case 'default-gradient':
+                        element.style.background = 'linear-gradient(to right, #4c51bf, #7b3dcc)';
+                        break;
+                    case 'image-like':
+                        element.style.background = `linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)`;
+                        element.style.backgroundColor = '#4c51bf';
+                        element.style.backgroundSize = '20px 20px';
+                        break;
+                    case 'abstract-shapes':
+                        element.style.background = `radial-gradient(circle at top left, rgba(255,255,255,0.1) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(255,255,255,0.1) 0%, transparent 40%)`;
+                        element.style.backgroundColor = '#7b3dcc';
+                        break;
+                    case 'subtle-grid':
+                        element.style.background = `linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px), linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px)`;
+                        element.style.backgroundColor = '#f3f4f6';
+                        element.style.backgroundSize = '15px 15px';
+                        break;
+                    case 'wavy-pattern':
+                        element.style.background = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='%23673ab7' d='M0 50 Q25 60 50 50 T100 50 V100 H0 Z'/%3E%3C/svg%3E")`;
+                        element.style.backgroundSize = 'cover';
+                        element.style.backgroundRepeat = 'no-repeat';
+                        element.style.backgroundPosition = 'center';
+                        element.style.backgroundColor = '#e8eaf6';
+                        break;
+                    case 'custom-image':
+                        if (customSource) {
+                            element.style.backgroundImage = `url('${customSource}')`;
+                            element.style.backgroundSize = 'cover';
+                            element.style.backgroundRepeat = 'no-repeat';
+                            element.style.backgroundPosition = 'center';
+                        } else {
+                            element.style.backgroundColor = '#f0f0f0';
+                        }
+                        break;
+                }
+            };
+
+            for (const key of inputElementIds) {
+                const inputEl = els[key];
+                if (inputEl) {
+                    inputEl.value = currentSettings[key];
+                    inputEl.addEventListener('input', (e) => {
+                        currentSettings[key] = e.target.value;
+                        updatePosterPreview();
+                    });
+                }
+            }
+
+            const handleFileUpload = (fileInput, targetKey) => {
+                if (!fileInput) return;
+                fileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            currentSettings[targetKey] = reader.result;
+                            if (targetKey === 'officialLogoSource' && els.officialLogoSource) {
+                                els.officialLogoSource.value = '';
+                            } else if (targetKey === 'companyLogoSource' && els.companyLogoSource) {
+                                els.companyLogoSource.value = '';
+                            } else if (targetKey === 'customBackgroundSource' && els.customBackgroundSource) {
+                                els.customBackgroundSource.value = '';
+                            }
+                            updatePosterPreview();
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            };
+            handleFileUpload(els.officialLogoUpload, 'officialLogoSource');
+            handleFileUpload(els.companyLogoUpload, 'companyLogoSource');
+            handleFileUpload(els.customBackgroundUpload, 'customBackgroundSource');
+
+            if (els.backgroundDesign) {
+                els.backgroundDesign.addEventListener('change', (e) => {
+                    currentSettings.backgroundDesign = e.target.value;
+                    if (els.customImageInputs) {
+                        if (e.target.value === 'custom-image') {
+                            els.customImageInputs.classList.remove('hidden');
+                        } else {
+                            els.customImageInputs.classList.add('hidden');
+                        }
+                    }
+                    updatePosterPreview();
+                });
+            }
+
+            if (els.downloadPosterBtn) {
+                els.downloadPosterBtn.addEventListener('click', async () => {
+                    if (els.messageDisplay) els.messageDisplay.textContent = '';
+                    if (els.downloadPosterBtn) els.downloadPosterBtn.disabled = true;
+                    if (els.messageDisplay) els.messageDisplay.textContent = 'Generating poster...';
+
+                    if (typeof html2canvas === 'undefined') {
+                        if (els.messageDisplay) els.messageDisplay.textContent = 'Error: Poster generation library not loaded.';
+                        console.error('html2canvas library is not available.');
+                        if (els.downloadPosterBtn) els.downloadPosterBtn.disabled = false;
+                        return;
+                    }
+
+                    updatePosterPreview();
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    try {
+                        const canvas = await html2canvas(els.posterPreview, {
+                            scale: 3,
+                            useCORS: true,
+                            allowTaint: false,
+                            backgroundColor: '#ffffff',
+                            logging: false,
+                            width: els.posterPreview.offsetWidth,
+                            height: els.posterPreview.offsetHeight
+                        });
+                        const image = canvas.toDataURL('image/png');
+                        const link = document.createElement('a');
+                        link.href = image;
+                        link.download = 'recruitment_poster.png';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        if (els.messageDisplay) els.messageDisplay.textContent = 'Poster downloaded!';
+                    } catch (error) {
+                        console.error('Error generating poster:', error);
+                        if (els.messageDisplay) els.messageDisplay.textContent = 'Failed to generate poster. Ensure image URLs support CORS or use uploaded images.';
+                    } finally {
+                        if (els.downloadPosterBtn) els.downloadPosterBtn.disabled = false;
+                        setTimeout(() => { if (els.messageDisplay) els.messageDisplay.textContent = ''; }, 3000);
+                    }
+                });
+            }
+
+            for (const key of inputElementIds) {
+                if (els[key]) {
+                    if (key === 'officialLogoSource' || key === 'companyLogoSource') {
+                        if (currentSettings[key].startsWith('<svg')) {
+                            els[key].value = '';
+                        } else {
+                            els[key].value = currentSettings[key];
+                        }
+                    } else {
+                        els[key].value = currentSettings[key];
+                    }
+                }
+            }
+
+            const today = new Date();
+            const nextMonth = new Date();
+            nextMonth.setMonth(today.getMonth() + 1);
+            if (els.applicationStartDate) els.applicationStartDate.value = today.toISOString().split('T')[0];
+            if (els.applicationDeadline) els.applicationDeadline.value = nextMonth.toISOString().split('T')[0];
+
+            if (els.customImageInputs && currentSettings.backgroundDesign === 'custom-image') {
+                els.customImageInputs.classList.remove('hidden');
+            } else if (els.customImageInputs) {
+                els.customImageInputs.classList.add('hidden');
+            }
+
+            updatePosterPreview();
+
+            const setupResizeObservers = () => {
+                const resizeObserver = new ResizeObserver(() => {
+                    updatePosterPreview();
+                });
+                if (els.orgNameContainer) resizeObserver.observe(els.orgNameContainer);
+                if (els.recruitmentTitleContainer) resizeObserver.observe(els.recruitmentTitleContainer);
+                if (els.vacanciesContainer) resizeObserver.observe(els.vacanciesContainer);
+                const eligibilityInnerDiv = els.eligibilityContainer ? els.eligibilityContainer.querySelector('.dynamic-text-container') : null;
+                if (eligibilityInnerDiv) resizeObserver.observe(eligibilityInnerDiv);
+                const ageLimitInnerDiv = els.ageLimitContainer ? els.ageLimitContainer.querySelector('.dynamic-text-container') : null;
+                if (ageLimitInnerDiv) resizeObserver.observe(ageLimitInnerDiv);
+                const feesDetailsInnerDiv = els.feesDetailsContainer ? els.feesDetailsContainer.querySelector('.dynamic-text-container') : null;
+                if (feesDetailsInnerDiv) resizeObserver.observe(feesDetailsInnerDiv);
+            };
+            setTimeout(setupResizeObservers, 100);
+        });
+    </script>
+</body>
+</html>

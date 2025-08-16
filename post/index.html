@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recruitment Post Generator</title>
+    <!-- Font Awesome 6.4.0 CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" xintegrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdgNsGaKxVbQtdn-K/fQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        /* Blogger-Safe CSS - All classes prefixed with bronline- */
+
+        /* General Body and Container Styling */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #f0f8ff, #e6f7ff);
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .bronline-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+            animation: fadeIn 1s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Headers */
+        .bronline-header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #0056b3;
+            font-size: 2.2em;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+            background: linear-gradient(45deg, #007bff, #00bfff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Form Styling */
+        .bronline-form-group {
+            margin-bottom: 20px;
+        }
+
+        .bronline-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #0056b3;
+            font-size: 1.05em;
+        }
+
+        .bronline-input,
+        .bronline-textarea {
+            width: calc(100% - 20px);
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1em;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .bronline-input:focus,
+        .bronline-textarea:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 8px rgba(0, 123, 255, 0.3);
+            outline: none;
+        }
+
+        .bronline-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* Fieldset Styling */
+        .bronline-fieldset {
+            border: 2px solid #007bff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.1);
+        }
+
+        .bronline-fieldset legend {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #007bff;
+            padding: 0 10px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Buttons */
+        .bronline-button {
+            display: inline-block;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #fff;
+            text-align: center;
+            text-decoration: none;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .bronline-button:hover {
+            transform: scale(1.03);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .bronline-button-primary {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+        }
+
+        .bronline-button-danger {
+            background: linear-gradient(45deg, #dc3545, #c82333);
+        }
+
+        .bronline-button-success {
+            background: linear-gradient(45deg, #28a745, #218838);
+        }
+
+        .bronline-add-field-button {
+            margin-top: 20px;
+            width: auto;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .bronline-custom-field {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px dashed #ced4da;
+        }
+
+        .bronline-custom-field .bronline-input {
+            flex-grow: 1;
+            margin-bottom: 0;
+        }
+
+        .bronline-custom-field .bronline-button-danger {
+            padding: 8px 12px;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+
+        /* Preview Section */
+        .bronline-preview-section,
+        .bronline-output-section {
+            margin-top: 40px;
+            border-top: 2px dashed #ddd;
+            padding-top: 30px;
+        }
+
+        .bronline-preview-section h2,
+        .bronline-output-section h2 {
+            text-align: center;
+            color: #0056b3;
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+        }
+
+        .bronline-preview {
+            border: 2px solid #007bff;
+            padding: 20px;
+            min-height: 200px;
+            background-color: #f9f9f9;
+            border-radius: 10px;
+            box-shadow: inset 0 0 15px rgba(0, 123, 255, 0.1);
+        }
+
+        /* Output Card Styling */
+        .bronline-card-box {
+            background: linear-gradient(135deg, #ffffff, #f0f0f0);
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .bronline-card-box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        }
+
+        .bronline-card-box h3 {
+            color: #0056b3;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #cee5ff;
+            padding-bottom: 10px;
+            /* Added for icon alignment */
+            display: flex;
+            align-items: center;
+        }
+
+        .bronline-card-box h3 i {
+            /* Added for icon spacing and color */
+            margin-right: 10px;
+            color: #007bff; /* Default icon color for headings */
+            font-size: 1.1em;
+        }
+
+        .bronline-card-box ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .bronline-card-box ul li {
+            margin-bottom: 8px;
+            padding-left: 0; /* Removed padding as icon is inside <li> */
+            position: relative;
+            font-size: 1.05em;
+        }
+
+        .bronline-card-box ul li strong {
+            color: #333;
+            font-weight: bold;
+        }
+
+        /* Styling for icons within list items */
+        .bronline-card-box ul li i {
+            margin-right: 8px; /* Space between icon and text */
+            font-size: 0.95em; /* Slightly smaller than text */
+            vertical-align: middle; /* Align icon vertically with text */
+        }
+
+        /* Default color for general list icons */
+        .bronline-card-box:not(.bronline-important-dates-card) ul li i {
+            color: #007bff; /* Blue for general list icons */
+        }
+
+        /* Specific colors for icons based on parent card/section */
+        .bronline-important-dates-card ul li i {
+            color: #dc3545; /* Red for date icons */
+        }
+
+        /* Specific override for eligibility and selection to green checkmark feel */
+        .bronline-card-box h3 .fa-user-check + span + ul li i, /* Eligibility Criteria */
+        .bronline-card-box h3 .fa-clipboard-list + span + ul li i /* Selection Process */ {
+            color: #28a745; /* Green for eligibility/selection list items */
+        }
+
+        /* For exam prediction list items */
+        .bronline-card-box h3 .fa-lightbulb + span + ul li i {
+            color: #f0ad4e; /* Orange/yellow for prediction icons */
+        }
+
+
+        /* Specific Card Styling */
+        .bronline-important-dates-card h3 {
+            color: #d9534f;
+        }
+        .bronline-important-dates-card h3 i { /* Specific icon color for this card */
+            color: #d9534f;
+        }
+
+        .bronline-important-links-card {
+            background: linear-gradient(45deg, #ffc107, #00bfff); /* Yellow and Sky gradient */
+            color: #333;
+        }
+
+        .bronline-important-links-card h3 {
+            color: #2b2b2b;
+        }
+        .bronline-important-links-card h3 i { /* Specific icon color for this card */
+            color: #2b2b2b;
+        }
+
+        .bronline-important-links-card .bronline-link-button {
+            display: inline-block;
+            margin: 8px 10px 8px 0;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            text-decoration: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            background: linear-gradient(45deg, #ff416c, #ff4b2b); /* Red gradient */
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        .bronline-important-links-card .bronline-link-button.disabled {
+            background: #adb5bd; /* Gray for disabled */
+            cursor: not-allowed;
+            opacity: 0.7;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .bronline-important-links-card .bronline-link-button.disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        .bronline-link-button:hover:not(.disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.25);
+        }
+
+        /* Date Specific Styling in Preview */
+        .bronline-start-date {
+            color: #007bff; /* Blue */
+            font-weight: bold;
+        }
+
+        .bronline-last-date {
+            color: #dc3545; /* Red */
+            font-weight: bold;
+        }
+
+        .bronline-last-date-remaining {
+            display: inline-block;
+            background: linear-gradient(45deg, #dc3545, #8b0000); /* Gradient Red */
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            animation: bronline-blink-effect 1s infinite alternate;
+            box-shadow: 0 0 10px rgba(220, 53, 69, 0.6); /* Glowing effect */
+            margin-left: 10px;
+        }
+
+        @keyframes bronline-blink-effect {
+            0% { background: linear-gradient(45deg, #dc3545, #8b0000); box-shadow: 0 0 10px rgba(220, 53, 69, 0.6); transform: scale(1); }
+            50% { background: linear-gradient(45deg, #e67d7d, #ff6347); box-shadow: 0 0 20px rgba(255, 99, 71, 0.8); transform: scale(1.02); }
+            100% { background: linear-gradient(45deg, #dc3545, #8b0000); box-shadow: 0 0 10px rgba(220, 53, 69, 0.6); transform: scale(1); }
+        }
+
+
+        /* Image Banner */
+        .bronline-image-banner {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto 25px auto;
+            border: 3px solid #dc3545; /* Red border */
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Raw HTML Output */
+        .bronline-raw-html-output pre {
+            background-color: #282c34;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap; /* Ensure line breaks are visible */
+            word-wrap: break-word; /* Break long words */
+            tab-size: 4;
+            line-height: 1.5;
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Message Box Styling */
+        .bronline-message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            z-index: 1000;
+            font-size: 1.1em;
+            animation: bronline-fade-in-out 2s forwards;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        @keyframes bronline-fade-in-out {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            90% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+        }
+
+        /* Recruitment Job Style Design Above Cards */
+        .bronline-recruitment-job-style {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(45deg, #e0efff, #cce0ff);
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bronline-recruitment-job-style::before {
+            content: "\f0b1"; /* Briefcase icon */
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            font-size: 4em;
+            color: rgba(0, 123, 255, 0.15); /* Slightly less transparent */
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 0;
+            transform: rotate(-15deg);
+        }
+
+        .bronline-recruitment-job-style::after {
+            content: "\f500"; /* Users icon */
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            font-size: 4em;
+            color: rgba(0, 123, 255, 0.15); /* Slightly less transparent */
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            z-index: 0;
+            transform: rotate(15deg);
+        }
+
+        .bronline-recruitment-job-style h1 {
+            color: #007bff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .bronline-recruitment-job-style p {
+            font-size: 1.1em;
+            color: #555;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .bronline-container {
+                margin: 10px;
+                padding: 20px;
+            }
+
+            .bronline-header {
+                font-size: 1.8em;
+            }
+
+            .bronline-fieldset legend {
+                font-size: 1.1em;
+            }
+
+            .bronline-button {
+                padding: 10px 20px;
+                font-size: 1em;
+            }
+
+            .bronline-card-box {
+                padding: 15px;
+            }
+
+            .bronline-card-box h3 {
+                font-size: 1.2em;
+            }
+
+            .bronline-card-box ul li {
+                font-size: 0.95em;
+            }
+
+            .bronline-last-date-remaining {
+                margin-left: 5px;
+                font-size: 0.9em;
+            }
+
+            .bronline-recruitment-job-style h1 {
+                font-size: 1.8em;
+            }
+
+            .bronline-recruitment-job-style p {
+                font-size: 0.95em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            .bronline-container {
+                margin: 5px;
+                padding: 15px;
+            }
+
+            .bronline-header {
+                font-size: 1.5em;
+            }
+
+            .bronline-input,
+            .bronline-textarea {
+                padding: 10px;
+                font-size: 0.95em;
+            }
+
+            .bronline-fieldset {
+                padding: 15px;
+            }
+
+            .bronline-button {
+                width: 100%;
+                margin-top: 10px;
+            }
+
+            .bronline-custom-field {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .bronline-custom-field .bronline-input {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .bronline-custom-field .bronline-button-danger {
+                width: 100%;
+            }
+
+            .bronline-last-date-remaining {
+                display: block;
+                margin-top: 5px;
+                text-align: center;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="bronline-container">
+        <h1 class="bronline-header">Recruitment Post Generator</h1>
+        <button class="bronline-button bronline-button-primary" style="width: 100%; margin-top: 20px;"><i class="fas fa-magic"></i> <a href="poster.html">Image Generater</a></button>
+        <form id="bronline-recruitment-form">
+            <fieldset class="bronline-fieldset">
+                <legend>Required Information</legend>
+                <div class="bronline-form-group">
+                    <label for="bronline-job-title" class="bronline-label">Job Title <span style="color:red">*</span></label>
+                    <input type="text" id="bronline-job-title" class="bronline-input" required>
+                </div>
+                <div class="bronline-form-group">
+                    <label for="bronline-total-vacancies" class="bronline-label">Total Vacancies <span style="color:red">*</span></label>
+                    <input type="number" id="bronline-total-vacancies" class="bronline-input" required>
+                </div>
+            </fieldset>
+
+            <fieldset class="bronline-fieldset">
+                <legend>Optional Details</legend>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-image-banner-url" class="bronline-label">Image Banner URL</label>
+                    <input type="url" id="bronline-image-banner-url" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-eligibility-criteria" class="bronline-label">Eligibility Criteria (Key=Value per line)</label>
+                    <textarea id="bronline-eligibility-criteria" class="bronline-textarea" placeholder="e.g., Age=18-30 years&#10;Education=Graduation in any discipline"></textarea>
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-selection-process" class="bronline-label">Selection Process (Key=Value per line)</label>
+                    <textarea id="bronline-selection-process" class="bronline-textarea" placeholder="e.g., Stage 1=Written Exam&#10;Stage 2=Interview"></textarea>
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-start-date" class="bronline-label">Application Start Date</label>
+                    <input type="date" id="bronline-start-date" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-last-date" class="bronline-label">Application Last Date</label>
+                    <input type="date" id="bronline-last-date" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-exam-date" class="bronline-label">Exam Date</label>
+                    <input type="date" id="bronline-exam-date" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-fee-payment-last-date" class="bronline-label">Fee Payment Last Date</label>
+                    <input type="date" id="bronline-fee-payment-last-date" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-application-fees" class="bronline-label">Application Fees (Key=Value per line)</label>
+                    <textarea id="bronline-application-fees" class="bronline-textarea" placeholder="e.g., General=₹500&#10;SC/ST=₹250"></textarea>
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-category-wise-vacancies" class="bronline-label">Category-wise Vacancies (Key=Value per line)</label>
+                    <textarea id="bronline-category-wise-vacancies" class="bronline-textarea" placeholder="e.g., UR=100&#10;OBC=50&#10;SC=30"></textarea>
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-notification-url" class="bronline-label">Notification URL</label>
+                    <input type="url" id="bronline-notification-url" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-apply-url" class="bronline-label">Apply URL</label>
+                    <input type="url" id="bronline-apply-url" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-admit-card-url" class="bronline-label">Admit Card URL</label>
+                    <input type="text" id="bronline-admit-card-url" class="bronline-input">
+                </div>
+
+                <div class="bronline-form-group">
+                    <label for="bronline-official-website-url" class="bronline-label">Official Website URL</label>
+                    <input type="url" id="bronline-official-website-url" class="bronline-input">
+                </div>
+
+                 <div class="bronline-form-group">
+                    <label for="bronline-exam-prediction" class="bronline-label">Exam Prediction / Expected (Multi-line text)</label>
+                    <textarea id="bronline-exam-prediction" class="bronline-textarea" placeholder="e.g., Expected questions for each section&#10;Tips for preparation"></textarea>
+                </div>
+
+            </fieldset>
+
+            <fieldset class="bronline-fieldset">
+                <legend>Custom Fields</legend>
+                <div id="bronline-custom-fields-container">
+                    <!-- Custom fields will be appended here -->
+                </div>
+                <button type="button" id="bronline-add-other-field" class="bronline-button bronline-button-success bronline-add-field-button"><i class="fas fa-plus-circle"></i> Add Other Field</button>
+            </fieldset>
+
+            <button type="submit" class="bronline-button bronline-button-primary" style="width: 100%; margin-top: 20px;"><i class="fas fa-magic"></i> Generate Post</button>
+        </form>
+
+        <div class="bronline-preview-section">
+            <h2>Live Preview</h2>
+            <div id="bronline-live-preview" class="bronline-preview">
+                <!-- Live preview will be rendered here -->
+            </div>
+        </div>
+
+        <div class="bronline-output-section">
+            <h2>Raw HTML Output</h2>
+            <pre id="bronline-raw-html-output"></pre>
+            <button type="button" id="bronline-copy-html-button" class="bronline-button bronline-button-success" style="width: 100%; margin-top: 20px;"><i class="fas fa-copy"></i> Copy HTML</button>
+        </div>
+    </div>
+
+    <script>
+        // All custom JavaScript functions prefixed with bronline_
+
+        document.addEventListener('DOMContentLoaded', bronline_initGenerator);
+
+        function bronline_initGenerator() {
+            const form = document.getElementById('bronline-recruitment-form');
+            const livePreviewDiv = document.getElementById('bronline-live-preview');
+            const rawHtmlOutputPre = document.getElementById('bronline-raw-html-output');
+            const addOtherFieldButton = document.getElementById('bronline-add-other-field');
+            const customFieldsContainer = document.getElementById('bronline-custom-fields-container');
+            const copyHtmlButton = document.getElementById('bronline-copy-html-button');
+
+            let customFieldCounter = 0;
+
+            // Icon mapping for list item content
+            const bronline_contentIcons = {
+                'eligibility': 'fas fa-clipboard-check',
+                'selection': 'fas fa-cogs',
+                'fees': 'fas fa-hand-holding-usd',
+                'vacancies': 'fas fa-users',
+                'prediction': 'fas fa-question-circle',
+                'default': 'fas fa-info-circle' // Default icon for custom or unmapped fields
+            };
+
+            // Function to add a new custom field
+            addOtherFieldButton.addEventListener('click', bronline_addCustomField);
+            function bronline_addCustomField() {
+                customFieldCounter++;
+                const customFieldDiv = document.createElement('div');
+                customFieldDiv.className = 'bronline-custom-field';
+                customFieldDiv.id = `bronline-custom-field-${customFieldCounter}`;
+
+                customFieldDiv.innerHTML = `
+                    <input type="text" class="bronline-input bronline-custom-field-heading" placeholder="Custom Heading (e.g., Important Notes)" id="bronline-custom-heading-${customFieldCounter}">
+                    <textarea class="bronline-textarea bronline-custom-field-content" placeholder="Custom Content (Key=Value or multi-line text)" id="bronline-custom-content-${customFieldCounter}"></textarea>
+                    <button type="button" class="bronline-button bronline-button-danger bronline-remove-custom-field" data-id="${customFieldCounter}"><i class="fas fa-minus-circle"></i> Remove</button>
+                `;
+                customFieldsContainer.appendChild(customFieldDiv);
+
+                // Add event listener to the new remove button
+                customFieldDiv.querySelector('.bronline-remove-custom-field').addEventListener('click', bronline_removeCustomField);
+
+                // Update preview when a new custom field is added or changed
+                customFieldDiv.querySelector('.bronline-custom-field-heading').addEventListener('input', bronline_updatePreview);
+                customFieldDiv.querySelector('.bronline-custom-field-content').addEventListener('input', bronline_updatePreview);
+            }
+
+            // Function to remove a custom field
+            function bronline_removeCustomField(event) {
+                const fieldId = event.target.dataset.id;
+                document.getElementById(`bronline-custom-field-${fieldId}`).remove();
+                bronline_updatePreview(); // Update preview after removing a field
+            }
+
+
+            // Form submission handler
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                bronline_updatePreview();
+            });
+
+            // Live preview update on input change (for relevant fields)
+            document.querySelectorAll('.bronline-input, .bronline-textarea').forEach(input => {
+                input.addEventListener('input', bronline_updatePreview);
+            });
+
+
+            // Function to sanitize input using DOM methods
+            function bronline_sanitizeInput(input) {
+                const div = document.createElement('div');
+                div.textContent = input;
+                return div.innerHTML;
+            }
+
+            // Function to format date to DD-MM-YYYY
+            function bronline_formatDate(dateString) {
+                if (!dateString) return '';
+                const date = new Date(dateString);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}-${month}-${year}`;
+            }
+
+            // Function to calculate remaining days
+            function bronline_getRemainingDays(lastDateString) {
+                if (!lastDateString) return null;
+                const today = new Date();
+                const lastDate = new Date(lastDateString);
+                lastDate.setHours(23, 59, 59, 999); // Set to end of day for accurate calculation
+
+                const diffTime = lastDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays >= 0 ? diffDays : null; // Return null if date has passed
+            }
+
+
+            // Function to convert multi-line key=value to UL LI HTML with dynamic icons
+            function bronline_convertToUlLi(text, fieldIdentifier = 'default') {
+                if (!text) return '';
+                const lines = text.split('\n').filter(line => line.trim() !== '');
+                let html = '<ul>';
+                const iconClass = bronline_contentIcons[fieldIdentifier] || bronline_contentIcons['default'];
+
+                lines.forEach(line => {
+                    const parts = line.split('=');
+                    if (parts.length > 1) {
+                        html += `<li><i class="${iconClass}"></i> <strong>${bronline_sanitizeInput(parts[0].trim())}:</strong> ${bronline_sanitizeInput(parts.slice(1).join('=').trim())}</li>`;
+                    } else {
+                        html += `<li><i class="${iconClass}"></i> ${bronline_sanitizeInput(line.trim())}</li>`;
+                    }
+                });
+                html += '</ul>';
+                return html;
+            }
+
+            // Main function to update the preview and raw HTML
+            function bronline_updatePreview() {
+                const jobTitle = bronline_sanitizeInput(document.getElementById('bronline-job-title').value);
+                const totalVacancies = bronline_sanitizeInput(document.getElementById('bronline-total-vacancies').value);
+                const imageBannerUrl = bronline_sanitizeInput(document.getElementById('bronline-image-banner-url').value);
+
+                // Convert multi-line fields to UL LI with specific icons
+                const eligibilityCriteria = bronline_convertToUlLi(document.getElementById('bronline-eligibility-criteria').value, 'eligibility');
+                const selectionProcess = bronline_convertToUlLi(document.getElementById('bronline-selection-process').value, 'selection');
+                const applicationFees = bronline_convertToUlLi(document.getElementById('bronline-application-fees').value, 'fees');
+                const categoryWiseVacancies = bronline_convertToUlLi(document.getElementById('bronline-category-wise-vacancies').value, 'vacancies');
+                const examPredictionList = bronline_convertToUlLi(document.getElementById('bronline-exam-prediction').value, 'prediction');
+
+
+                const startDate = bronline_formatDate(document.getElementById('bronline-start-date').value);
+                const lastDate = bronline_formatDate(document.getElementById('bronline-last-date').value);
+                const examDate = bronline_formatDate(document.getElementById('bronline-exam-date').value);
+                const feePaymentLastDate = bronline_formatDate(document.getElementById('bronline-fee-payment-last-date').value);
+
+                const notificationUrl = bronline_sanitizeInput(document.getElementById('bronline-notification-url').value);
+                const applyUrl = bronline_sanitizeInput(document.getElementById('bronline-apply-url').value);
+                const admitCardUrl = bronline_sanitizeInput(document.getElementById('bronline-admit-card-url').value);
+                const officialWebsiteUrl = bronline_sanitizeInput(document.getElementById('bronline-official-website-url').value);
+
+                const lastDateRaw = document.getElementById('bronline-last-date').value; // Get raw date for calculation
+                const remainingDays = bronline_getRemainingDays(lastDateRaw);
+
+                let generatedHtml = '';
+
+                // Image Banner
+                if (imageBannerUrl) {
+                    generatedHtml += `<img src="${imageBannerUrl}" alt="${jobTitle || 'Recruitment Banner'}" class="bronline-image-banner">`;
+                }
+
+                // Recruitment Job Style Design
+                if (jobTitle || totalVacancies) {
+                    generatedHtml += `
+                        <div class="bronline-recruitment-job-style">
+                            <h1><i class="fas fa-bullhorn"></i> ${jobTitle || 'Job Post'}</h1>
+                            <p><i class="fas fa-user-friends"></i> Total Vacancies: <strong>${totalVacancies || 'N/A'}</strong></p>
+                        </div>
+                    `;
+                }
+
+                // Job Title & Total Vacancies Card
+                if (jobTitle || totalVacancies) {
+                    generatedHtml += `
+                        <div class="bronline-card-box">
+                            <h3><i class="fas fa-info-circle"></i> Job Overview</h3>
+                            <ul>
+                                <li><i class="fas fa-briefcase"></i> <strong>Job Title:</strong> ${jobTitle || 'N/A'}</li>
+                                <li><i class="fas fa-person-booth"></i> <strong>Total Vacancies:</strong> ${totalVacancies || 'N/A'}</li>
+                            </ul>
+                        </div>
+                    `;
+                }
+
+
+                // Important Dates Card
+                if (startDate || lastDate || examDate || feePaymentLastDate) {
+                    generatedHtml += `
+                        <div class="bronline-card-box bronline-important-dates-card">
+                            <h3><i class="fas fa-calendar-alt"></i> Important Dates</h3>
+                            <ul>
+                                ${startDate ? `<li><i class="fas fa-play-circle"></i> <strong>Application Start Date:</strong> <span class="bronline-start-date">${startDate}</span></li>` : ''}
+                                ${lastDate ? `<li><i class="fas fa-stop-circle"></i> <strong>Application Last Date:</strong> <span class="bronline-last-date">${lastDate}</span>
+                                    ${remainingDays !== null ? `<span class="bronline-last-date-remaining">${remainingDays} Days Left</span>` : ''}
+                                </li>` : ''}
+                                ${examDate ? `<li><i class="fas fa-marker"></i> <strong>Exam Date:</strong> ${examDate}</li>` : ''}
+                                ${feePaymentLastDate ? `<li><i class="fas fa-credit-card"></i> <strong>Fee Payment Last Date:</strong> ${feePaymentLastDate}</li>` : ''}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                // Exam Prediction Card
+                if (examPredictionList) { // Use examPredictionList here
+                    generatedHtml += `
+                        <div class="bronline-card-box">
+                            <h3><i class="fas fa-lightbulb"></i> Exam Prediction / Expected</h3>
+                            ${examPredictionList}
+                        </div>
+                    `;
+                }
+
+
+                // Eligibility Criteria Card
+                if (eligibilityCriteria) {
+                    generatedHtml += `
+                        <div class="bronline-card-box">
+                            <h3><i class="fas fa-user-check"></i> Eligibility Criteria</h3>
+                            ${eligibilityCriteria}
+                        </div>
+                    `;
+                }
+
+                // Selection Process Card
+                if (selectionProcess) {
+                    generatedHtml += `
+                        <div class="bronline-card-box">
+                            <h3><i class="fas fa-clipboard-list"></i> Selection Process</h3>
+                            ${selectionProcess}
+                        </div>
+                    `;
+                }
+
+                // Application Fees Card
+                if (applicationFees) {
+                    generatedHtml += `
+                        <div class="bronline-card-box">
+                            <h3><i class="fas fa-money-bill-wave"></i> Application Fees</h3>
+                            ${applicationFees}
+                        </div>
+                    `;
+                }
+
+                // Category-wise Vacancies Card
+                if (categoryWiseVacancies) {
+                    generatedHtml += `
+                        <div class="bronline-card-box">
+                            <h3><i class="fas fa-users"></i> Category-wise Vacancies</h3>
+                            ${categoryWiseVacancies}
+                        </div>
+                    `;
+                }
+
+                // Custom Field Blocks
+                document.querySelectorAll('.bronline-custom-field').forEach(fieldDiv => {
+                    const headingInput = fieldDiv.querySelector('.bronline-custom-field-heading');
+                    const contentTextarea = fieldDiv.querySelector('.bronline-custom-field-content');
+                    const heading = bronline_sanitizeInput(headingInput.value);
+                    // Use bronline_convertToUlLi for custom content too
+                    const content = bronline_convertToUlLi(contentTextarea.value);
+
+                    if (heading && content && content !== '<ul></ul>') { // Check if content has actual list items
+                        generatedHtml += `
+                            <div class="bronline-card-box">
+                                <h3><i class="fas fa-sticky-note"></i> ${heading}</h3>
+                                ${content}
+                            </div>
+                        `;
+                    } else if (heading && (content === '<ul></ul>' || !content)) {
+                         generatedHtml += `
+                            <div class="bronline-card-box">
+                                <h3><i class="fas fa-sticky-note"></i> ${heading}</h3>
+                                <p>No content provided.</p>
+                            </div>
+                        `;
+                    }
+                });
+
+
+                // Important Links Card
+                if (notificationUrl || applyUrl || admitCardUrl || officialWebsiteUrl) {
+                    generatedHtml += `
+                        <div class="bronline-card-box bronline-important-links-card">
+                            <h3><i class="fas fa-link"></i> Important Links</h3>
+                            <div>
+                                ${notificationUrl ? `<a href="${notificationUrl === '#' ? 'javascript:void(0)' : notificationUrl}" target="_blank" rel="noopener noreferrer" class="bronline-link-button ${notificationUrl === '#' ? 'disabled' : ''}"><i class="fas fa-file-alt"></i> Notification</a>` : ''}
+                                ${applyUrl ? `<a href="${applyUrl === '#' ? 'javascript:void(0)' : applyUrl}" target="_blank" rel="noopener noreferrer" class="bronline-link-button ${applyUrl === '#' ? 'disabled' : ''}"><i class="fas fa-external-link-alt"></i> Apply Online</a>` : ''}
+                                ${admitCardUrl ? `<a href="${admitCardUrl === '#' ? 'javascript:void(0)' : admitCardUrl}" target="_blank" rel="noopener noreferrer" class="bronline-link-button ${admitCardUrl === '#' ? 'disabled' : ''}"><i class="fas fa-ticket-alt"></i> Admit Card</a>` : ''}
+                                ${officialWebsiteUrl ? `<a href="${officialWebsiteUrl === '#' ? 'javascript:void(0)' : officialWebsiteUrl}" target="_blank" rel="noopener noreferrer" class="bronline-link-button ${officialWebsiteUrl === '#' ? 'disabled' : ''}"><i class="fas fa-globe"></i> Official Website</a>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                livePreviewDiv.innerHTML = generatedHtml;
+                rawHtmlOutputPre.textContent = generatedHtml;
+            }
+
+            // Copy HTML functionality
+            copyHtmlButton.addEventListener('click', bronline_copyHtml);
+
+            function bronline_copyHtml() {
+                const textToCopy = rawHtmlOutputPre.textContent;
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(textToCopy)
+                        .then(() => bronline_showMessage('HTML copied to clipboard!'))
+                        .catch(err => {
+                            console.error('Failed to copy text using Clipboard API: ', err);
+                            bronline_fallbackCopy(textToCopy);
+                        });
+                } else {
+                    bronline_fallbackCopy(textToCopy);
+                }
+            }
+
+            function bronline_fallbackCopy(text) {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed'; // Prevent scrolling to bottom
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    bronline_showMessage('HTML copied to clipboard (fallback)!');
+                } catch (err) {
+                    console.error('Fallback: Oops, unable to copy', err);
+                    bronline_showMessage('Failed to copy HTML.', 'error');
+                }
+                document.body.removeChild(textarea);
+            }
+
+            function bronline_showMessage(message, type = 'success') {
+                const messageBox = document.createElement('div');
+                messageBox.className = 'bronline-message-box';
+                messageBox.textContent = message;
+                if (type === 'error') {
+                    messageBox.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
+                }
+                document.body.appendChild(messageBox);
+
+                setTimeout(() => {
+                    messageBox.remove();
+                }, 2000); // Message disappears after 2 seconds
+            }
+
+            // Initial preview generation on load
+            bronline_updatePreview();
+        }
+    </script>
+</body>
+</html>

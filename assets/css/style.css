@@ -1,0 +1,294 @@
+/*
+ * assets/css/style.css
+ *
+ * This file contains custom CSS for the Project Management System,
+ * particularly for the sidebar layout and general styling.
+ */
+
+/* Basic Reset & Body Styling */
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: #f8f9fa; /* Light gray background */
+    color: #333;
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+}
+
+/* Wrapper for sidebar and content */
+.wrapper {
+    display: flex;
+    width: 100%;
+    align-items: stretch;
+    min-height: 100vh;
+    position: relative; /* Needed for fixed sidebar and content positioning */
+}
+
+/* Sidebar Styling */
+#sidebar {
+    min-width: 280px;
+    max-width: 280px;
+    background: #343a40; /* Dark background for sidebar */
+    color: #fff;
+    transition: all 0.3s;
+    position: fixed; /* Keep sidebar fixed */
+    top: 0;
+    left: 0;
+    height: 100vh; /* Full height */
+    z-index: 1000; /* Ensure it's above other content */
+    overflow-y: auto; /* Enable scrolling for long menus */
+    box-shadow: 3px 0 10px rgba(0,0,0,0.2); /* Subtle shadow */
+    /* Default state: visible on desktop */
+    margin-left: 0; /* Ensures it starts at the left edge */
+}
+
+#sidebar.active {
+    /* State when active (toggled): hidden */
+    margin-left: -280px; /* Hides the sidebar by moving it off-screen to the left */
+}
+
+#sidebar .p-4 {
+    padding: 1.5rem !important; /* Adjust padding for inner content */
+}
+
+#sidebar .mb-4.text-center {
+    margin-bottom: 1.5rem !important;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#sidebar ul.components {
+    padding: 20px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#sidebar ul li a {
+    padding: 15px 20px;
+    font-size: 1.1em;
+    display: block;
+    color: #e0e0e0;
+    text-decoration: none;
+    transition: all 0.3s;
+    white-space: nowrap; /* Prevent text wrapping */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Add ellipsis for overflow */
+}
+
+#sidebar ul li a:hover {
+    color: #fff;
+    background: #007bff; /* Primary color on hover */
+    border-radius: 0 25px 25px 0; /* Rounded right edge on hover */
+}
+
+#sidebar ul li.active > a, #sidebar ul li.active > a:hover {
+    color: #fff;
+    background: #007bff; /* Active background */
+    border-radius: 0 25px 25px 0;
+}
+
+#sidebar ul li a i {
+    margin-right: 10px;
+}
+
+#sidebar ul li.active a[data-bs-toggle="collapse"] {
+    background: #007bff;
+}
+
+#sidebar ul ul a {
+    font-size: 1em !important;
+    padding-left: 40px !important;
+    background: #495057; /* Darker background for sub-menu items */
+}
+
+#sidebar ul ul a:hover {
+    background: #007bff;
+}
+
+/* Content Area Styling */
+#content {
+    width: 100%;
+    min-height: 100vh;
+    transition: all 0.3s;
+    /* Default state: pushed by sidebar on desktop */
+    margin-left: 120px; /* This margin ensures content starts after the sidebar */
+    /* Removed padding from here, it will be added by container-fluid in individual pages */
+}
+
+#content.active {
+    /* State when sidebar is 'active' (hidden): no margin */
+    margin-left: 0;
+}
+
+/* Custom Menu Button (now outside sidebar) */
+.custom-menu {
+    position: fixed;
+    top: 20px;
+    z-index: 1001;
+    transition: all 0.3s;
+    /* Default position for desktop (sidebar visible) */
+    left: 290px; /* Position slightly to the right of the sidebar when open */
+}
+
+/* When sidebar is 'active' (meaning it's hidden on desktop),
+   the button should move to the far left. */
+#sidebar.active ~ #content .custom-menu, /* This selector is now correct as custom-menu is a sibling of sidebar */
+.custom-menu.active { /* This class is toggled by JS on the button itself */
+    left: 10px; /* Button moves to the left when sidebar is hidden */
+}
+
+.custom-menu .btn {
+    background: #007bff;
+    border: none;
+    color: #fff;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.custom-menu .btn:hover {
+    background: #0056b3;
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 768px) {
+    /* On mobile, sidebar is hidden by default */
+    #sidebar {
+        margin-left: -280px;
+    }
+    /* When sidebar is active (shown on mobile), move it into view */
+    #sidebar.active {
+        margin-left: 0;
+    }
+
+    /* On mobile, content starts without margin */
+    #content {
+        margin-left: 0;
+    }
+    /* When sidebar is active (shown on mobile), push content */
+    #content.active {
+        margin-left: 120px;
+    }
+
+    /* On mobile, custom-menu starts on the left (sidebar hidden) */
+    .custom-menu {
+        left: 10px; /* Default position for mobile (sidebar hidden) */
+        top: 10px; /* Adjust top for mobile */
+        display: block; /* Show on mobile */
+    }
+    /* When sidebar is active (shown on mobile), move button to the right */
+    #sidebar.active ~ #content .custom-menu,
+    .custom-menu.active {
+        left: 120px; /* Button moves to the right when sidebar is shown */
+    }
+}
+
+/* Hide custom-menu on larger screens */
+@media (min-width: 769px) {
+    .custom-menu {
+        display: none; /* Hide on desktop */
+    }
+    /* Ensure content is correctly positioned when sidebar is always visible on desktop */
+    #content {
+        margin-left: 120px; /* Always maintain this margin on desktop */
+    }
+}
+
+
+/* General Card Styling */
+.card {
+    border: none;
+    border-radius: 1rem; /* More rounded corners */
+    overflow: hidden; /* Ensures content respects border-radius */
+}
+
+.card-header {
+    border-bottom: none;
+    padding: 1.25rem 1.5rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.card-header i {
+    margin-right: 0.75rem;
+    font-size: 1.2em;
+}
+
+.table-responsive {
+    border-radius: 0.8rem;
+    overflow: hidden;
+    border: 1px solid #e9ecef; /* Light border for table container */
+}
+
+.table {
+    margin-bottom: 0; /* Remove default table margin */
+}
+
+.table th, .table td {
+    padding: 1rem;
+    vertical-align: middle;
+}
+
+.table thead th {
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #495057;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Form Control Styling */
+.form-control, .form-select {
+    border-radius: 0.5rem; /* Slightly rounded form elements */
+    padding: 0.75rem 1rem;
+    border: 1px solid #ced4da;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.25rem rgba(0, 123, 255, 0.25);
+}
+
+.btn {
+    border-radius: 0.5rem; /* Slightly rounded buttons */
+    padding: 0.75rem 1.25rem;
+    font-weight: 500;
+}
+
+/* Custom Alert Styling */
+.alert {
+    border-radius: 0.75rem;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+}
+
+.alert .alert-heading {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.alert .btn-close {
+    margin-left: auto;
+    font-size: 1rem;
+}
+.alert.fade-out {
+    opacity: 0;
+    transition: opacity 0.5s ease-out;
+}
+
+/* Specific styling for badges in sidebar */
+#sidebar .badge {
+    font-size: 0.75em; /* Smaller font size for badges */
+    padding: 0.3em 0.6em; /* Adjust padding */
+    line-height: 1; /* Ensure proper vertical alignment */
+}
+
+/* Ensure dropdown menus in sidebar are visible */
+#sidebar ul.collapse.show {
+    visibility: visible;
+    height: auto !important; /* Override inline style if any */
+}
