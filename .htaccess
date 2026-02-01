@@ -1,0 +1,23 @@
+# .htaccess
+#
+# This file is for Apache web servers to enable URL rewriting,
+# making URLs cleaner (e.g., http://localhost/project_management_system/home instead of index.php?page=home).
+#
+# Place this file in the root directory of your project (same level as index.php).
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Base directory for the rewrite rules.
+    # Adjust this if your project is in a subfolder.
+    # For example, if your project is at http://localhost/myproject/, set RewriteBase /myproject/
+    RewriteBase /project_management_system/
+
+    # Redirect requests for a non-existent file or directory to index.php.
+    # The 'QSA' flag ensures that any existing query string parameters
+    # (like '?page=dashboard&action=delete_task&id=X') are preserved and passed to index.php.
+    # This rule assumes that all routing logic (determining which PHP file to include)
+    # is handled within index.php based on the 'page' GET parameter.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php [L,QSA]
+</IfModule>

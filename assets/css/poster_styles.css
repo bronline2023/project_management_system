@@ -1,0 +1,89 @@
+/*
+ * poster_styles.css
+ * This file contains all the shared styles for the recruitment poster generator and view pages.
+ */
+.bronline-image-banner{max-width:100%;width:450px;height:auto;max-height:650px;object-fit:contain;display:block;margin:0 auto 25px auto;border:3px solid #dc3545;border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,.1)}.bronline-recruitment-job-style{text-align:center;margin-bottom:30px;padding:20px;background:linear-gradient(45deg,#e0efff,#cce0ff);border-radius:10px;box-shadow:0 5px 15px rgba(0,0,0,.1);position:relative;overflow:hidden}.bronline-recruitment-job-style::before{content:"\f0b1";font-family:"Font Awesome 6 Free";font-weight:900;font-size:4em;color:rgba(0,123,255,.15);position:absolute;top:10px;left:10px;z-index:0;transform:rotate(-15deg)}.bronline-recruitment-job-style::after{content:"\f500";font-family:"Font Awesome 6 Free";font-weight:900;font-size:4em;color:rgba(0,123,255,.15);position:absolute;bottom:10px;right:10px;z-index:0;transform:rotate(15deg)}.bronline-recruitment-job-style h1{color:#007bff;font-size:2.5em;margin-bottom:10px;position:relative;z-index:1}.bronline-recruitment-job-style p{font-size:1.1em;color:#555;position:relative;z-index:1}.bronline-card-box{background:linear-gradient(135deg,#fff,#f0f0f0);border:1px solid #e0e0e0;border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:0 5px 15px rgba(0,0,0,.08);transition:transform .3s ease,box-shadow .3s ease}.bronline-card-box:hover{transform:translateY(-5px);box-shadow:0 8px 25px rgba(0,0,0,.12)}.bronline-card-box h3{color:#0056b3;margin-top:0;margin-bottom:15px;font-size:1.4em;border-bottom:2px solid #cee5ff;padding-bottom:10px;display:flex;align-items:center}.bronline-card-box h3 i{margin-right:10px;color:#007bff;font-size:1.1em}.bronline-card-box ul{list-style:none;padding:0;margin:0}.bronline-card-box ul li{margin-bottom:8px;padding-left:0;position:relative;font-size:1.05em}.bronline-card-box ul li strong{color:#333;font-weight:700}.bronline-card-box ul li i{margin-right:8px;font-size:.95em;vertical-align:middle}.bronline-card-box:not(.bronline-important-dates-card) ul li i{color:#007bff}.bronline-important-dates-card ul li i{color:#dc3545}.bronline-important-dates-card h3{color:#d9534f}.bronline-important-dates-card h3 i{color:#d9534f}.bronline-important-links-card{background:linear-gradient(45deg,#ffc107,#00bfff);color:#333}.bronline-important-links-card h3{color:#2b2b2b}.bronline-important-links-card h3 i{color:#2b2b2b}.bronline-important-links-card .bronline-link-button{display:inline-block;margin:8px 10px 8px 0;padding:10px 20px;border-radius:25px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(0,0,0,.15);transition:transform .2s ease,box-shadow .2s ease;background:linear-gradient(45deg,#ff416c,#ff4b2b);color:#fff;text-shadow:1px 1px 2px rgba(0,0,0,.2)}.bronline-link-button.disabled{background:#adb5bd;cursor:not-allowed;opacity:.7;transform:none;box-shadow:none}.bronline-link-button:hover:not(.disabled){transform:scale(1.05);box-shadow:0 6px 15px rgba(0,0,0,.25)}.bronline-start-date{color:#007bff;font-weight:700}.bronline-last-date{color:#dc3545;font-weight:700}.bronline-last-date-remaining{display:inline-block;background:linear-gradient(45deg,#dc3545,#8b0000);color:#fff;padding:5px 10px;border-radius:5px;font-weight:700;animation:bronline-blink-effect 1s infinite alternate;box-shadow:0 0 10px rgba(220,53,69,.6);margin-left:10px}@keyframes bronline-blink-effect{0%{background:linear-gradient(45deg,#dc3545,#8b0000);box-shadow:0 0 10px rgba(220,53,69,.6);transform:scale(1)}50%{background:linear-gradient(45deg,#e67d7d,#ff6347);box-shadow:0 0 20px rgba(255,99,71,.8);transform:scale(1.02)}100%{background:linear-gradient(45deg,#dc3545,#8b0000);box-shadow:0 0 10px rgba(220,53,69,.6);transform:scale(1)}}.bronline-message-box{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background-color:rgba(0,0,0,.8);color:#fff;padding:15px 30px;border-radius:10px;z-index:1000;font-size:1.1em;animation:bronline-fade-in-out 2s forwards;box-shadow:0 5px 20px rgba(0,0,0,.3)}@keyframes bronline-fade-in-out{0%{opacity:0;transform:translate(-50%,-50%) scale(.8)}10%{opacity:1;transform:translate(-50%,-50%) scale(1)}90%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(.8)}}
+.poster-container {width:100%;max-width:500px;min-height:500px;border-radius:15px;box-shadow:0 8px 25px rgba(0,0,0,0.15);display:flex;flex-direction:column;font-family:'Poppins',sans-serif;color:#333;overflow:auto;margin:auto;border:1px solid #e0e0e0;position:relative}
+.poster-container.design-1 { background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%); }
+.poster-container.design-1 .poster-header { background: rgba(255, 255, 255, 0.6); }
+.poster-container.design-1 .poster-title h2 { color: #b91c1c; }
+.poster-container.design-1 .poster-info-box { background: rgba(255, 255, 255, 0.8); border-left: 4px solid #1e3a8a; }
+.poster-container.design-1 .poster-info-icon, .poster-container.design-1 .poster-org-details h1 { color: #1e3a8a; }
+.poster-container.design-1 .poster-org-details p { color: #4b5563; }
+.poster-container.design-1 .poster-info-content h3 { color: #6b7280; }
+.poster-container.design-1 .poster-footer { background: #1e3a8a; color: #fff; }
+.poster-container.design-1 .poster-date-box.poster-last-date p { color: #facc15; }
+.poster-container.design-1 .poster-company-footer { background: #e0eafc; }
+.poster-container.design-2 { background: linear-gradient(to top, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); }
+.poster-container.design-2 .poster-header { background: rgba(255, 255, 255, 0.7); }
+.poster-container.design-2 .poster-title h2, .poster-container.design-2 .poster-org-details h1 { color: #c81d25; }
+.poster-container.design-2 .poster-org-details p { color: #58181c; }
+.poster-container.design-2 .poster-info-box { background: rgba(255, 255, 255, 0.8); border-left: 4px solid #ff9a9e; }
+.poster-container.design-2 .poster-info-icon { color: #ff9a9e; }
+.poster-container.design-2 .poster-info-content h3 { color: #a13339; }
+.poster-container.design-2 .poster-footer { background: #c81d25; color: #fff; }
+.poster-container.design-2 .poster-company-footer { background: #fecfef; }
+.poster-container.design-3 { background: linear-gradient(to right, #414345, #232526); color: #fff; }
+.poster-container.design-3 .poster-header, .poster-container.design-3 .poster-info-box { background: rgba(255, 255, 255, 0.1); border-left: 4px solid #00c6ff; }
+.poster-container.design-3 .poster-org-details h1, .poster-container.design-3 .poster-title h2, .poster-container.design-3 .poster-info-icon, .poster-container.design-3 .poster-date-box.poster-last-date p { color: #00c6ff; text-shadow: none; }
+.poster-container.design-3 .poster-org-details p, .poster-container.design-3 .poster-info-content h3 { color: #ccc; }
+.poster-container.design-3 .poster-footer { background: #000; color: #fff; }
+.poster-container.design-3 .poster-company-footer { background: #232526; color: #fff; }
+.poster-container.design-4 { background: linear-gradient(120deg, #d4fc79 0%, #96e6a1 100%); }
+.poster-container.design-4 .poster-header { background: rgba(255, 255, 255, 0.6); }
+.poster-container.design-4 .poster-title h2, .poster-container.design-4 .poster-org-details h1 { color: #228b22; }
+.poster-container.design-4 .poster-org-details p { color: #2e8b57; }
+.poster-container.design-4 .poster-info-box { background: rgba(255, 255, 255, 0.8); border-left: 4px solid #2e8b57; }
+.poster-container.design-4 .poster-info-icon { color: #2e8b57; }
+.poster-container.design-4 .poster-info-content h3 { color: #1e6a40; }
+.poster-container.design-4 .poster-footer { background: #228b22; color: #fff; }
+.poster-container.design-4 .poster-company-footer { background: #d4fc79; }
+.poster-container.design-5 { background: linear-gradient(to right, #8e2de2, #4a00e0); color: #fff; }
+.poster-container.design-5 .poster-header, .poster-container.design-5 .poster-info-box { background: rgba(255, 255, 255, 0.15); border-left: 4px solid #fff; }
+.poster-container.design-5 .poster-org-details h1, .poster-container.design-5 .poster-title h2, .poster-container.design-5 .poster-info-icon { color: #fff; text-shadow: 1px 1px 3px rgba(0,0,0,0.3); }
+.poster-container.design-5 .poster-org-details p, .poster-container.design-5 .poster-info-content h3 { color: #eee; }
+.poster-container.design-5 .poster-footer { background: rgba(0,0,0,0.2); }
+.poster-container.design-5 .poster-company-footer { background: linear-gradient(to right, #8e2de2, #4a00e0); }
+.poster-container.design-6 { background-color: #f5f5f5; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='250' height='100'%3E%3Ctext x='50%25' y='50%25' font-size='16' fill='rgba(0,0,0,0.06)' transform='rotate(-30 125,50)' text-anchor='middle' font-family='Poppins, sans-serif' font-weight='600'%3Ewww.bronline.net%3C/text%3E%3C/svg%3E"); }
+.poster-container.design-6 .poster-header { background: rgba(255, 255, 255, 0.7); }
+.poster-container.design-6 .poster-title h2 { color: #d62828; }
+.poster-container.design-6 .poster-info-box { background: rgba(255, 255, 255, 0.9); border-left: 4px solid #f77f00; }
+.poster-container.design-6 .poster-info-icon, .poster-container.design-6 .poster-org-details h1 { color: #003049; }
+.poster-container.design-6 .poster-org-details p { color: #4b5563; }
+.poster-container.design-6 .poster-info-content h3 { color: #6b7280; }
+.poster-container.design-6 .poster-footer { background: #003049; color: #fff; }
+.poster-container.design-6 .poster-date-box.poster-last-date p { color: #fcbf49; }
+.poster-container.design-6 .poster-company-footer { background: #e9ecef; }
+.poster-container.design-sarkari-bharti { background: #fff; border-top: 15px solid #FF9933; border-bottom: 15px solid #138808; position: relative; font-family: 'Arial', sans-serif;}
+.poster-container.design-sarkari-bharti::before { content: ''; position: absolute; top: 15px; left: 0; width: 100%; height: 5px; background: #000080;}
+.poster-container.design-sarkari-bharti .poster-logo-container { border-radius: 50%; border: 2px solid #000080; }
+.poster-container.design-sarkari-bharti .poster-org-details h1 { color: #000080; }
+.poster-container.design-sarkari-bharti .poster-org-details p { color: #555; }
+.poster-container.design-sarkari-bharti .poster-title h2 { color: #D22B2B; font-weight: bold; border-bottom: 2px solid #FF9933; border-top: 2px solid #138808; padding: 10px 0; margin-top: 10px;}
+.poster-container.design-sarkari-bharti .poster-info-box { background: #f5f5f5; border: 1px solid #ddd; border-left: 5px solid #000080;}
+.poster-container.design-sarkari-bharti .poster-info-icon { color: #FF9933; }
+.poster-container.design-sarkari-bharti .poster-info-content h3 { color: #555; }
+.poster-container.design-sarkari-bharti .poster-info-content p { color: #111; font-weight: bold; }
+.poster-container.design-sarkari-bharti .poster-footer { background: linear-gradient(to right, #FF9933, #138808); color: #fff; }
+.poster-container.design-sarkari-bharti .poster-company-footer { background: #f0f0f0; }
+.poster-container.design-sarkari-yojana { background: linear-gradient(135deg, #e3f2fd, #bbdefb); color: #0d47a1; border: 2px solid #0d47a1;}
+.poster-container.design-sarkari-yojana::after { content: ''; background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/1200px-Emblem_of_India.svg.png'); background-size: contain; background-position: center; background-repeat: no-repeat; opacity: 0.05; top: 0; left: 0; bottom: 0; right: 0; position: absolute; z-index: 0; }
+.poster-container.design-sarkari-yojana > * { z-index: 1; }
+.poster-container.design-sarkari-yojana .poster-title h2 { color: #d32f2f; font-weight: bold; text-transform: uppercase; background: rgba(255,255,255,0.7); padding: 10px; border-radius: 5px;}
+.poster-container.design-sarkari-yojana .poster-body { padding: 1.5rem; }
+.poster-container.design-sarkari-yojana .poster-info-box { background: rgba(255,255,255,0.8); border-left: 5px solid #0d47a1; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.poster-container.design-sarkari-yojana .poster-info-icon { color: #0d47a1; }
+.poster-container.design-sarkari-yojana .poster-info-content h3 { color: #555; }
+.poster-container.design-sarkari-yojana .poster-info-content p { color: #111; font-weight: bold; }
+.poster-container.design-sarkari-yojana .poster-footer { background: #0d47a1; color: #fff; }
+.poster-container.design-sarkari-yojana .poster-company-footer { background: #bbdefb; }
+.poster-container.design-ai-futuristic { background: #121212; color: #e0e0e0; font-family: 'Roboto', sans-serif; }
+.poster-container.design-ai-futuristic .poster-header { border-bottom: 1px solid rgba(139, 92, 246, 0.5); }
+.poster-container.design-ai-futuristic .poster-org-details h1 { color: #fff; }
+.poster-container.design-ai-futuristic .poster-org-details p { color: #aaa; }
+.poster-container.design-ai-futuristic .poster-title h2 { background: -webkit-linear-gradient(45deg, #8B5CF6, #EC4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.poster-container.design-ai-futuristic .poster-info-box { background: #1E1E1E; border: 1px solid #333; border-left: 4px solid #8B5CF6; }
+.poster-container.design-ai-futuristic .poster-info-icon { color: #8B5CF6; }
+.poster-container.design-ai-futuristic .poster-footer { background: linear-gradient(90deg, #8B5CF6, #EC4899); color: #fff; }
+.poster-container.design-ai-futuristic .poster-company-footer { background: #1E1E1E; }
+.poster-container.has-custom-bg { background-size: cover !important; background-position: center !important; background-repeat: no-repeat !important; }
