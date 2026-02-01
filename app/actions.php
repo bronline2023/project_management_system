@@ -4,6 +4,7 @@
  * This is the "brain" of the application, a master file to handle all POST requests.
  * It keeps index.php clean and centralizes all data processing logic.
  * This is the final and most comprehensive version with all required actions fully implemented.
+ * UPDATED: Includes Freelancer Payment & Balance Calculation Logic.
  */
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -588,6 +589,9 @@ try {
             $newStatus = $_POST['status'];
             $assignedUserId = $_POST['assigned_to_user_id'];
             
+            // [NEW] Fetch OLD Status to check for transition
+            $oldTask = fetchOne($pdo, "SELECT status, is_verified FROM work_assignments WHERE id = ?", [$taskId]);
+
             $isVerified = 0;
             $completionDate = NULL;
             // FIXED: Change 'completed' to 'verified_completed' for consistency
@@ -619,6 +623,41 @@ try {
                 $_POST['fee'], $_POST['fee_mode'], $_POST['maintenance_fee'], $_POST['maintenance_fee_mode'], $_POST['discount'], $_POST['task_price'],
                 $newStatus, $paymentStatus, $admin_notes, $isVerified, $completionDate, $taskId
             ]);
+
+            // --- [NEW LOGIC START] FREELANCER BALANCE UPDATE ---
+            // Only update balance if task is JUST marked as 'verified_completed' and wasn't before
+            if ($newStatus === 'verified_completed' && $oldTask['status'] !== 'verified_completed') {
+                
+                // Fetch financial details again to be sure
+                $taskData = fetchOne($pdo, "SELECT fee, task_price, payment_collected_by FROM work_assignments WHERE id = ?", [$taskId]);
+                
+                if ($taskData) {
+                    $totalFee = (float)$taskData['fee'];       // Total Amount from Customer
+                    $freelancerFee = (float)$taskData['task_price']; // Freelancer's Share
+                    $collectedBy = $taskData['payment_collected_by'];
+                    $balanceChange = 0;
+
+                    if ($collectedBy === 'company') {
+                        // Case 1: Company collected money.
+                        // Company owes Freelancer their share.
+                        // Action: CREDIT Freelancer Wallet
+                        $balanceChange = $freelancerFee;
+                    } elseif ($collectedBy === 'self') {
+                        // Case 2: Freelancer collected money (Total Fee).
+                        // Freelancer keeps their share, but owes Company the rest.
+                        // Action: DEBIT Company Share from Freelancer Wallet
+                        // Company Share = Total - FreelancerShare
+                        $companyShare = $totalFee - $freelancerFee;
+                        $balanceChange = -($companyShare);
+                    }
+
+                    // Execute Balance Update
+                    if ($balanceChange != 0) {
+                        $pdo->prepare("UPDATE users SET balance = balance + ? WHERE id = ?")->execute([$balanceChange, $assignedUserId]);
+                    }
+                }
+            }
+            // --- [NEW LOGIC END] ---
 
             $notificationMessage = "The status of your task #{$taskId} has been updated to {$newStatus}.";
             if ($newStatus === 'verified_completed') {
@@ -732,17 +771,32 @@ try {
 
         case 'submit_for_verification':
             $taskId = $_POST['task_id'];
+            $paymentCollectedBy = $_POST['payment_collected_by'] ?? 'none'; // [NEW] Catch Payment Mode
+
+            // [NEW] Handle Work File Upload
+            $workFilePath = null;
+            $uploadDir = ROOT_PATH . 'uploads/task_receipts/'; // Using same dir for now, or create 'task_works'
+            if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
+
+            if (isset($_FILES['work_file']) && $_FILES['work_file']['error'] == UPLOAD_ERR_OK) {
+                $fileName = 'work_' . $taskId . '_' . time() . '.' . pathinfo($_FILES['work_file']['name'], PATHINFO_EXTENSION);
+                if (move_uploaded_file($_FILES['work_file']['tmp_name'], $uploadDir . $fileName)) {
+                    $workFilePath = 'uploads/task_receipts/' . $fileName;
+                }
+            }
+
+            // Handle Receipt Upload
             $receiptPath = null;
             if (isset($_FILES['completion_receipt']) && $_FILES['completion_receipt']['error'] == UPLOAD_ERR_OK) {
-                $uploadDir = ROOT_PATH . 'uploads/task_receipts/';
-                if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
                 $fileName = 'receipt_' . $taskId . '_' . time() . '.' . pathinfo($_FILES['completion_receipt']['name'], PATHINFO_EXTENSION);
                 if (move_uploaded_file($_FILES['completion_receipt']['tmp_name'], $uploadDir . $fileName)) {
                     $receiptPath = 'uploads/task_receipts/' . $fileName;
                 }
             }
-            $stmt = $pdo->prepare("UPDATE work_assignments SET status = 'pending_verification', completion_receipt_path = ?, user_notes = ? WHERE id = ? AND assigned_to_user_id = ?");
-            $stmt->execute([$receiptPath, $_POST['user_notes'], $taskId, $currentUserId]);
+
+            // [UPDATED] Update Query to include payment mode and work file
+            $stmt = $pdo->prepare("UPDATE work_assignments SET status = 'pending_verification', completion_receipt_path = ?, work_file = ?, user_notes = ?, payment_collected_by = ? WHERE id = ? AND assigned_to_user_id = ?");
+            $stmt->execute([$receiptPath, $workFilePath, $_POST['user_notes'], $paymentCollectedBy, $taskId, $currentUserId]);
             
             $admins = fetchAll($pdo, "SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id WHERE r.role_name = 'Admin'");
             foreach ($admins as $admin) {
