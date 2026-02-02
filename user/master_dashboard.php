@@ -1,146 +1,271 @@
 <?php
 /**
  * user/master_dashboard.php
- * A dynamic dashboard for users like Accountant, Manager, Coordinator, etc.
- * The content is customized based on user roles and permissions.
+ * FINAL ADMIN DASHBOARD:
+ * - Comprehensive Freelancer Overview.
+ * - Financial Stats (Company Profit vs Freelancer Payouts).
+ * - Recent Activity & Withdrawal Alerts.
  */
 
-require_once MODELS_PATH . 'roles.php';
+require_once MODELS_PATH . 'db.php';
+require_once MODELS_PATH . 'withdrawal.php';
 
 $pdo = connectDB();
 $currentUserId = $_SESSION['user_id'];
-$currentUserRole = $_SESSION['user_role'] ?? 'guest';
-$currentUserName = $_SESSION['user_name'] ?? 'User';
-
-// --- [ Dashboard Configuration from roles.php ] ---
-$dashboardPermissions = getDashboardPermissionsForRole($currentUserRole);
-
-// --- [ Fetch Data based on Permissions ] ---
-$data = [];
 $settings = fetchOne($pdo, "SELECT currency_symbol FROM settings LIMIT 1");
 $currencySymbol = htmlspecialchars($settings['currency_symbol'] ?? '₹');
 
-// Fetch data for financial cards
-if (isset($dashboardPermissions['show_financial_summary']) && $dashboardPermissions['show_financial_summary']) {
-    $data['totalEarnings'] = (float)fetchColumn($pdo, "SELECT SUM(fee - maintenance_fee - discount) FROM work_assignments WHERE status = 'completed'") ?? 0.00;
-    $data['totalExpenses'] = (float)fetchColumn($pdo, "SELECT SUM(amount) FROM expenses") ?? 0.00;
-    $data['netProfit'] = $data['totalEarnings'] - $data['totalExpenses'];
-    $data['monthlyExpenses'] = (float)fetchColumn($pdo, "SELECT SUM(amount) FROM expenses WHERE YEAR(expense_date) = YEAR(CURDATE()) AND MONTH(expense_date) = MONTH(CURDATE())") ?? 0.00;
-    $data['yearlyExpenses'] = (float)fetchColumn($pdo, "SELECT SUM(amount) FROM expenses WHERE YEAR(expense_date) = YEAR(CURDATE())") ?? 0.00;
-}
+// --- 1. KEY COUNTS ---
 
-// Fetch data for task cards
-if (isset($dashboardPermissions['show_task_summary']) && $dashboardPermissions['show_task_summary']) {
-    // [FIX] Filter tasks by assigned user for non-admin roles
-    $task_condition = ($currentUserRole === 'admin') ? '' : "WHERE assigned_to_user_id = {$currentUserId}";
-    $data['totalTasks'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM work_assignments {$task_condition}");
-    $data['pendingTasks'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM work_assignments WHERE status = 'pending' " . (($currentUserRole === 'admin') ? '' : "AND assigned_to_user_id = {$currentUserId}"));
-    $data['inProcessTasks'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM work_assignments WHERE status = 'in_process' " . (($currentUserRole === 'admin') ? '' : "AND assigned_to_user_id = {$currentUserId}"));
-}
+// Total Freelancers
+$freelancerCount = fetchColumn($pdo, "
+    SELECT COUNT(*) FROM users u 
+    JOIN roles r ON u.role_id = r.id 
+    WHERE r.role_name IN ('Freelancer', 'Data Entry Operator', 'DEO')
+");
 
-// Fetch data for user and client cards
-if (isset($dashboardPermissions['show_user_client_summary']) && $dashboardPermissions['show_user_client_summary']) {
-    $data['totalUsers'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM users");
-    $data['totalClients'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM clients");
-}
+// Tasks waiting for Admin Verification (Submissions)
+$pendingVerificationCount = fetchColumn($pdo, "SELECT COUNT(*) FROM work_assignments WHERE status = 'pending_verification'");
 
-// Fetch data for appointment cards
-if (isset($dashboardPermissions['show_appointment_summary']) && $dashboardPermissions['show_appointment_summary']) {
-    $appointment_condition = ($currentUserRole === 'admin') ? '' : "AND user_id = {$currentUserId}";
-    $data['todayAppointments'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM appointments WHERE appointment_date = CURDATE() AND status = 'pending' {$appointment_condition}");
-    $data['completedAppointments'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM appointments WHERE status = 'completed' {$appointment_condition}");
-    $data['cancelledAppointments'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM appointments WHERE status = 'cancelled' {$appointment_condition}");
-}
+// Active Tasks (In Process)
+$activeTasksCount = fetchColumn($pdo, "SELECT COUNT(*) FROM work_assignments WHERE status = 'in_process'");
 
-// Fetch data for pending actions
-if (isset($dashboardPermissions['show_pending_actions']) && $dashboardPermissions['show_pending_actions']) {
-    $data['pendingWithdrawals'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM withdrawals WHERE status = 'pending'");
-    $data['pendingRecruitmentPosts'] = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM recruitment_posts WHERE approval_status = 'pending'");
-}
+// Pending Withdrawals
+$pendingWithdrawalCount = fetchColumn($pdo, "SELECT COUNT(*) FROM withdrawals WHERE status = 'pending'");
 
-// Fetch data for recent activities
-if (isset($dashboardPermissions['show_recent_activity']) && $dashboardPermissions['show_recent_activity']) {
-    $task_activity_condition = ($currentUserRole === 'admin') ? '' : " WHERE wa.assigned_to_user_id = {$currentUserId}";
-    $data['recentTasks'] = fetchAll($pdo, "SELECT wa.id, wa.work_description, u.name as assigned_to, cl.client_name, wa.created_at FROM work_assignments wa JOIN users u ON wa.assigned_to_user_id = u.id JOIN clients cl ON wa.client_id = cl.id {$task_activity_condition} ORDER BY wa.created_at DESC LIMIT 5");
-    $data['recentUsers'] = fetchAll($pdo, "SELECT name, email, created_at FROM users ORDER BY created_at DESC LIMIT 5");
-}
 
-// Fetch data for notifications
-if (isset($dashboardPermissions['show_notifications']) && $dashboardPermissions['show_notifications']) {
-    $data['recentNotifications'] = fetchAll($pdo, "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 5", [$currentUserId]);
-}
+// --- 2. FINANCIAL STATS ---
+
+// Total Company Profit (Fee - Task Price) from Completed Tasks
+$companyProfit = fetchColumn($pdo, "
+    SELECT SUM(fee - task_price) 
+    FROM work_assignments 
+    WHERE status = 'verified_completed'
+") ?: 0.00;
+
+// Total Wallet Balance of All Freelancers (Liability/Pending Payouts)
+$totalFreelancerLiability = fetchColumn($pdo, "
+    SELECT SUM(u.balance) 
+    FROM users u 
+    JOIN roles r ON u.role_id = r.id 
+    WHERE r.role_name IN ('Freelancer', 'Data Entry Operator', 'DEO')
+") ?: 0.00;
+
+
+// --- 3. RECENT WORK SUBMISSIONS (For "Work Updated" Card) ---
+$recentSubmissions = fetchAll($pdo, "
+    SELECT wa.id, wa.updated_at, u.name as freelancer_name, cl.client_name, wa.task_price
+    FROM work_assignments wa 
+    JOIN users u ON wa.assigned_to_user_id = u.id 
+    LEFT JOIN clients cl ON wa.client_id = cl.id
+    WHERE wa.status = 'pending_verification' 
+    ORDER BY wa.updated_at DESC LIMIT 5
+");
+
+// --- 4. RECENT WITHDRAWAL REQUESTS ---
+$recentWithdrawals = fetchAll($pdo, "
+    SELECT w.id, w.amount, w.requested_at, u.name as freelancer_name 
+    FROM withdrawals w 
+    JOIN users u ON w.user_id = u.id 
+    WHERE w.status = 'pending' 
+    ORDER BY w.requested_at DESC LIMIT 5
+");
 
 ?>
 
-<div class="container-fluid master-dashboard">
+<style>
+    .admin-card {
+        transition: transform 0.2s;
+        border-radius: 10px;
+        text-decoration: none !important;
+        display: block;
+        color: inherit;
+    }
+    .admin-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15) !important;
+        color: inherit;
+    }
+    .text-gray-800 { color: #5a5c69 !important; }
+</style>
+
+<div class="container-fluid">
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
-        <h1 class="h3 mb-0 text-gray-800"><?= ucfirst($currentUserRole) ?> Dashboard</h1>
-        <span class="text-muted">Welcome back, <strong><?= htmlspecialchars($currentUserName) ?></strong>!</span>
+        <h1 class="h3 mb-0 text-gray-800">Master Admin Dashboard</h1>
     </div>
 
     <div class="row">
-        <?php if (isset($dashboardPermissions['show_financial_summary']) && $dashboardPermissions['show_financial_summary']): ?>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-revenue"><div class="card-body"><div class="stat-icon"><i class="fas fa-dollar-sign"></i></div><div class="stat-content"><div class="text">Total Revenue</div><div class="number"><?= $currencySymbol ?><?= number_format($data['totalEarnings'], 2) ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-expenses-monthly"><div class="card-body"><div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div><div class="stat-content"><div class="text">Monthly Expenses</div><div class="number"><?= $currencySymbol ?><?= number_format($data['monthlyExpenses'], 2) ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-expenses-yearly"><div class="card-body"><div class="stat-icon"><i class="fas fa-money-check-alt"></i></div><div class="stat-content"><div class="text">Yearly Expenses</div><div class="number"><?= $currencySymbol ?><?= number_format($data['yearlyExpenses'], 2) ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-profit"><div class="card-body"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-content"><div class="text">Net Profit</div><div class="number"><?= $currencySymbol ?><?= number_format($data['netProfit'], 2) ?></div></div></div></div></div>
-        <?php endif; ?>
-
-        <?php if (isset($dashboardPermissions['show_task_summary']) && $dashboardPermissions['show_task_summary']): ?>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-total-tasks"><div class="card-body"><div class="stat-icon"><i class="fas fa-list-ul"></i></div><div class="stat-content"><div class="text">Total Tasks</div><div class="number"><?= $data['totalTasks'] ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-in-process"><div class="card-body"><div class="stat-icon"><i class="fas fa-cogs"></i></div><div class="stat-content"><div class="text">In Process Tasks</div><div class="number"><?= $data['inProcessTasks'] ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-admin-tasks"><div class="card-body"><div class="stat-icon"><i class="fas fa-tasks"></i></div><div class="stat-content"><div class="text">Pending Tasks</div><div class="number"><?= $data['pendingTasks'] ?> / <?= $data['totalTasks'] ?></div></div></div></div></div>
-        <?php endif; ?>
         
-        <?php if (isset($dashboardPermissions['show_user_client_summary']) && $dashboardPermissions['show_user_client_summary']): ?>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-users"><div class="card-body"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-content"><div class="text">Total Users</div><div class="number"><?= $data['totalUsers'] ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-submitted"><div class="card-body"><div class="stat-icon"><i class="fas fa-user-tie"></i></div><div class="stat-content"><div class="text">Total Clients</div><div class="number"><?= $data['totalClients'] ?></div></div></div></div></div>
-        <?php endif; ?>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="index.php?page=users" class="card border-left-primary shadow h-100 py-2 admin-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Freelancers</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800"><?= $freelancerCount ?></div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-users fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </a>
+        </div>
 
-        <?php if (isset($dashboardPermissions['show_appointment_summary']) && $dashboardPermissions['show_appointment_summary']): ?>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-appointment-today"><div class="card-body"><div class="stat-icon"><i class="fas fa-calendar-day"></i></div><div class="stat-content"><div class="text">Today's Appointments</div><div class="number"><?= $data['todayAppointments'] ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-appointment-completed"><div class="card-body"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-content"><div class="text">Completed Appointments</div><div class="number"><?= $data['completedAppointments'] ?></div></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-appointment-cancelled"><div class="card-body"><div class="stat-icon"><i class="fas fa-times-circle"></i></div><div class="stat-content"><div class="text">Cancelled Appointments</div><div class="number"><?= $data['cancelledAppointments'] ?></div></div></div></div></div>
-        <?php endif; ?>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="index.php?page=all_tasks" class="card border-left-warning shadow h-100 py-2 admin-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Pending Verification</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800"><?= $pendingVerificationCount ?></div>
+                            <small>Tasks submitted by Freelancers</small>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-file-signature fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="index.php?page=manage_withdrawals" class="card border-left-danger shadow h-100 py-2 admin-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Withdrawal Requests</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800"><?= $pendingWithdrawalCount ?></div>
+                            <small>Action Required</small>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-hand-holding-usd fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="index.php?page=all_tasks" class="card border-left-info shadow h-100 py-2 admin-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Tasks In Process</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800"><?= $activeTasksCount ?></div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-spinner fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </a>
+        </div>
     </div>
 
     <div class="row">
-        <?php if (isset($dashboardPermissions['show_recent_activity']) && $dashboardPermissions['show_recent_activity']): ?>
-            <div class="col-lg-6 mb-4">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-dark text-white d-flex flex-row align-items-center justify-content-between"><h5 class="m-0 font-weight-bold"><i class="fas fa-history me-2"></i>Recent Activity</h5></div>
-                    <div class="card-body">
-                        <div class="activity-feed">
-                            <?php if (empty($data['recentTasks'])): ?>
-                                <p class="text-center text-muted">No recent activity found.</p>
-                            <?php else: ?>
-                                <?php foreach($data['recentTasks'] as $task): ?>
-                                    <div class="activity-item"><div class="activity-icon bg-primary"><i class="fas fa-clipboard-list"></i></div><div><strong>New Task Assigned:</strong> #<?= $task['id'] ?> for client <?= htmlspecialchars($task['client_name']) ?><div class="activity-meta"><?= date('d M, Y H:i', strtotime($task['created_at'])) ?></div></div></div>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
+        <div class="col-xl-6 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Company Profit</div>
+                            <div class="h4 mb-0 font-weight-bold text-gray-800"><?= $currencySymbol . number_format($companyProfit, 2) ?></div>
+                            <small class="text-muted">Net Earnings from Freelancer Tasks</small>
                         </div>
+                        <div class="col-auto"><i class="fas fa-chart-line fa-2x text-gray-300"></i></div>
                     </div>
                 </div>
             </div>
-        <?php endif; ?>
+        </div>
+
+        <div class="col-xl-6 col-md-6 mb-4">
+            <div class="card border-left-secondary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">Total Payable (Freelancer Wallets)</div>
+                            <div class="h4 mb-0 font-weight-bold text-gray-800"><?= $currencySymbol . number_format($totalFreelancerLiability, 2) ?></div>
+                            <small class="text-muted">Amount currently in freelancer wallets</small>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-wallet fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
         
-        <?php if (isset($dashboardPermissions['show_notifications']) && $dashboardPermissions['show_notifications']): ?>
-            <div class="col-lg-6 mb-4">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-dark text-white"><h5 class="m-0 font-weight-bold"><i class="fas fa-bell-on me-2"></i>User Notifications</h5></div>
-                    <div class="card-body">
-                        <div class="activity-feed">
-                            <?php if(empty($data['recentNotifications'])): ?>
-                                <p class="text-center text-muted">No new notifications.</p>
-                            <?php else: ?>
-                                <?php foreach($data['recentNotifications'] as $notification): ?>
-                                    <div class="activity-item"><div class="activity-icon bg-info"><i class="fas fa-comment-alt-dots"></i></div><div><?= htmlspecialchars($notification['message']) ?><div class="activity-meta"><?= date('d M, Y H:i', strtotime($notification['created_at'])) ?></div></div></div>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold"><i class="fas fa-check-circle me-2"></i>Recent Work Submissions</h6>
+                    <a href="index.php?page=all_tasks" class="btn btn-sm btn-light">View All</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>Task</th>
+                                    <th>Freelancer</th>
+                                    <th>Client</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (!empty($recentSubmissions)): ?>
+                                    <?php foreach ($recentSubmissions as $sub): ?>
+                                    <tr>
+                                        <td>#<?= $sub['id'] ?></td>
+                                        <td><?= htmlspecialchars($sub['freelancer_name']) ?></td>
+                                        <td><?= htmlspecialchars($sub['client_name'] ?? 'N/A') ?></td>
+                                        <td>
+                                            <a href="index.php?page=edit_task&id=<?= $sub['id'] ?>" class="btn btn-sm btn-primary">Verify</a>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr><td colspan="4" class="text-center py-3">No pending submissions.</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-        <?php endif; ?>
+        </div>
+
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold"><i class="fas fa-money-bill-wave me-2"></i>New Withdrawal Requests</h6>
+                    <a href="index.php?page=manage_withdrawals" class="btn btn-sm btn-light">View All</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>Freelancer</th>
+                                    <th>Amount</th>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (!empty($recentWithdrawals)): ?>
+                                    <?php foreach ($recentWithdrawals as $with): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($with['freelancer_name']) ?></td>
+                                        <td class="text-danger fw-bold"><?= $currencySymbol . number_format($with['amount'], 2) ?></td>
+                                        <td><?= date('d M', strtotime($with['requested_at'])) ?></td>
+                                        <td>
+                                            <a href="index.php?page=manage_withdrawals" class="btn btn-sm btn-danger">Process</a>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr><td colspan="4" class="text-center py-3">No pending requests.</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>

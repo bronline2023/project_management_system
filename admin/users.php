@@ -1,96 +1,130 @@
 <?php
 /**
  * admin/users.php
- * FINAL & COMPLETE:
- * - Shows user status (Active/Inactive).
- * - Adds Edit, Delete, and Disable/Enable buttons that trigger a custom confirmation modal.
- * - Prevents actions against the main admin (ID 1) and the currently logged-in user.
+ * FINAL UPDATED: Added 'Recalculate Balance' button to fix sync issues.
  */
-$pdo = connectDB();
-$currentUserId = $_SESSION['user_id']; // Get current logged-in user's ID
 
-$users = fetchAll($pdo, "
-    SELECT u.id, u.name, u.email, u.created_at, u.status, r.role_name
-    FROM users u
-    LEFT JOIN roles r ON u.role_id = r.id
-    ORDER BY u.created_at DESC
-");
+$pdo = connectDB();
+$message = '';
+
+if (isset($_SESSION['status_message'])) {
+    $message = $_SESSION['status_message'];
+    unset($_SESSION['status_message']);
+}
+
+$settings = fetchOne($pdo, "SELECT currency_symbol FROM settings LIMIT 1");
+$currencySymbol = htmlspecialchars($settings['currency_symbol'] ?? '₹');
+
+// --- SEARCH & FILTER ---
+$search = $_GET['search'] ?? '';
+$roleFilter = $_GET['role'] ?? '';
+
+$sql = "SELECT u.*, r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id > 0";
+$params = [];
+
+if ($search) {
+    $sql .= " AND (u.name LIKE ? OR u.email LIKE ?)";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+}
+if ($roleFilter) {
+    $sql .= " AND r.role_name = ?";
+    $params[] = $roleFilter;
+}
+$sql .= " ORDER BY u.id DESC";
+
+$users = fetchAll($pdo, $sql, $params);
+$roles = fetchAll($pdo, "SELECT * FROM roles");
 ?>
 
-<h2 class="mb-4">Manage System Users</h2>
-
-<?php if (isset($_SESSION['status_message'])): ?>
-    <?php 
-    $message = $_SESSION['status_message'];
-    include VIEWS_PATH . 'components/message_box.php'; 
-    unset($_SESSION['status_message']); 
-    ?>
-<?php endif; ?>
-
-<div class="card shadow-sm rounded-3">
-    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-users-cog me-2"></i>All System Users</h5>
-        <a href="<?= BASE_URL ?>?page=register" class="btn btn-success rounded-pill px-4">Register New User</a>
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Users & Wallet Management</h1>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="fas fa-user-plus me-2"></i> Add User
+        </button>
     </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-hover table-striped mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($users as $user): ?>
+
+    <?php if ($message) { include VIEWS_PATH . 'components/message_box.php'; } ?>
+
+    <div class="card shadow mb-4">
+        <div class="card-body py-3">
+            <form method="GET" action="index.php" class="row g-3 align-items-center">
+                <input type="hidden" name="page" value="users">
+                <div class="col-auto"><input type="text" name="search" class="form-control" placeholder="Search..." value="<?= htmlspecialchars($search) ?>"></div>
+                <div class="col-auto">
+                    <select name="role" class="form-select">
+                        <option value="">All Roles</option>
+                        <?php foreach ($roles as $r): echo "<option value='{$r['role_name']}' " . ($roleFilter == $r['role_name'] ? 'selected' : '') . ">{$r['role_name']}</option>"; endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-auto"><button type="submit" class="btn btn-secondary"><i class="fas fa-search"></i></button></div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-dark text-white"><h6 class="m-0 font-weight-bold">User List & Balances</h6></div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
                         <tr>
-                            <td><?= htmlspecialchars($user['id']) ?></td>
-                            <td><?= htmlspecialchars($user['name']) ?></td>
-                            <td><?= htmlspecialchars($user['email']) ?></td>
-                            <td><span class="badge bg-info text-dark"><?= htmlspecialchars($user['role_name'] ?? 'No Role') ?></span></td>
+                            <th>ID</th>
+                            <th>User Details</th>
+                            <th>Role</th>
+                            <th class="text-center">Wallet Balance</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($users): foreach ($users as $user): ?>
+                        <tr>
+                            <td>#<?= $user['id'] ?></td>
                             <td>
-                                <?php if (strtolower($user['status']) === 'active'): ?>
-                                    <span class="badge bg-success">Active</span>
-                                <?php else: ?>
-                                    <span class="badge bg-danger">Inactive</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if ($user['id'] == 1): // Main Admin User ?>
-                                    <a href="<?= BASE_URL ?>?page=edit_user&id=<?= htmlspecialchars($user['id']) ?>" class="btn btn-sm btn-outline-primary" title="Edit Admin Profile"><i class="fas fa-edit"></i> Edit</a>
-                                <?php elseif ($user['id'] != $currentUserId): // Other users, but not self ?>
-                                    <div class="btn-group">
-                                        <a href="<?= BASE_URL ?>?page=edit_user&id=<?= htmlspecialchars($user['id']) ?>" class="btn btn-sm btn-outline-primary" title="Edit User"><i class="fas fa-edit"></i></a>
-                                        
-                                        <?php if (strtolower($user['status']) === 'active'): ?>
-                                            <a href="<?= BASE_URL ?>?page=users&action=toggle_user_status&id=<?= $user['id'] ?>" class="btn btn-sm btn-outline-warning" title="Disable User" onclick="return confirm('Are you sure you want to disable this user?');">
-                                                <i class="fas fa-user-slash"></i>
-                                            </a>
-                                        <?php else: ?>
-                                            <a href="<?= BASE_URL ?>?page=users&action=toggle_user_status&id=<?= $user['id'] ?>" class="btn btn-sm btn-outline-success" title="Enable User" onclick="return confirm('Are you sure you want to enable this user?');">
-                                                <i class="fas fa-user-check"></i>
-                                            </a>
-                                        <?php endif; ?>
-                                        
-                                        <form action="index.php" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to permanently delete this user? This action cannot be undone.');">
-                                            <input type="hidden" name="page" value="users">
-                                            <input type="hidden" name="action" value="delete_user">
-                                            <input type="hidden" name="user_id" value="<?= $user['id'] ?>">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete User"><i class="fas fa-trash"></i></button>
-                                        </form>
+                                <div class="d-flex align-items-center">
+                                    <img src="<?= !empty($user['profile_picture']) ? $user['profile_picture'] : 'assets/img/default_avatar.png' ?>" class="rounded-circle border me-2" width="40" height="40" style="object-fit:cover;">
+                                    <div>
+                                        <div class="fw-bold"><?= htmlspecialchars($user['name']) ?></div>
+                                        <div class="small text-muted"><?= htmlspecialchars($user['email']) ?></div>
                                     </div>
-                                <?php else: // Current logged-in user ?>
-                                     <a href="<?= BASE_URL ?>?page=edit_user&id=<?= htmlspecialchars($user['id']) ?>" class="btn btn-sm btn-outline-primary" title="Edit My Profile"><i class="fas fa-edit"></i> Edit</a>
+                                </div>
+                            </td>
+                            <td><span class="badge bg-info text-dark"><?= htmlspecialchars($user['role_name']) ?></span></td>
+                            
+                            <td class="text-center">
+                                <div class="h5 mb-0 fw-bold <?= $user['balance'] >= 0 ? 'text-success' : 'text-danger' ?>">
+                                    <?= $currencySymbol . number_format($user['balance'], 2) ?>
+                                </div>
+                                
+                                <form action="index.php" method="POST" class="d-inline-block mt-1">
+                                    <input type="hidden" name="action" value="recalculate_user_balance">
+                                    <input type="hidden" name="user_id" value="<?= $user['id'] ?>">
+                                    <button type="submit" class="btn btn-outline-warning btn-sm p-0 px-2" title="Fix Wrong Balance" style="font-size: 0.75rem;">
+                                        <i class="fas fa-sync-alt"></i> Fix Balance
+                                    </button>
+                                </form>
+                            </td>
+
+                            <td class="text-center">
+                                <a href="index.php?page=edit_user&id=<?= $user['id'] ?>" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i></a>
+                                <?php if ($user['id'] != 1 && $user['id'] != $_SESSION['user_id']): ?>
+                                <form action="index.php" method="POST" class="d-inline" onsubmit="return confirm('Delete user?');">
+                                    <input type="hidden" name="action" value="delete_user">
+                                    <input type="hidden" name="user_id" value="<?= $user['id'] ?>">
+                                    <button class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                                </form>
                                 <?php endif; ?>
                             </td>
                         </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                        <?php endforeach; else: ?>
+                            <tr><td colspan="5" class="text-center py-4">No users found.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
+
+<?php include VIEWS_PATH . 'register.php'; // Or inline modal code ?>

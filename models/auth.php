@@ -1,82 +1,72 @@
 <?php
 /**
  * models/auth.php
- * This file contains authentication-related functions.
- * FINAL & COMPLETE: Prevents inactive users from logging in and ensures session is started correctly.
+ * Fixed: Uses 'last_activity' column correctly.
  */
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+// Function to login user
+function loginUser($email, $password) {
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($user && password_verify($password, $user['password'])) {
+        // Set Session Variables
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user_name'] = $user['name'];
+        $_SESSION['user_role'] = getRoleName($user['role_id']); // Helper function from roles.php
+        $_SESSION['user_profile_picture'] = $user['profile_picture'];
+        
+        // Load Permissions
+        require_once MODELS_PATH . 'roles.php';
+        $_SESSION['user_permissions'] = getRolePermissions($user['role_id']);
+
+        // Update Activity Time
+        updateUserActivity($user['id']);
+
+        return true;
+    }
+    return false;
 }
 
-require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/roles.php';
+// Function to update last activity timestamp
+function updateUserActivity($userId = null) {
+    global $pdo;
+    if (!$userId && isset($_SESSION['user_id'])) {
+        $userId = $_SESSION['user_id'];
+    }
 
-function isLoggedIn() {
-    return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
-}
-
-function updateUserActivity() {
-    if (isLoggedIn()) {
-        $pdo = connectDB();
+    if ($userId) {
         try {
-            $stmt = $pdo->prepare("UPDATE users SET last_activity_at = NOW() WHERE id = :user_id");
-            $stmt->bindParam(':user_id', $_SESSION['user_id'], PDO::PARAM_INT);
-            $stmt->execute();
+            // FIXED: Using 'last_activity' (Standardized Name)
+            // Also updating 'last_activity_at' just in case legacy code needs it
+            $sql = "UPDATE users SET last_activity = NOW(), last_activity_at = NOW() WHERE id = ?";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$userId]);
         } catch (PDOException $e) {
+            // Silently fail or log error to avoid breaking the page
             error_log("Error updating user activity: " . $e->getMessage());
         }
     }
 }
-updateUserActivity();
 
-function loginUser($email, $password) {
-    $pdo = connectDB();
-    try {
-        // [FIX] Added status = 'active' to the query
-        $stmt = $pdo->prepare("SELECT u.id, u.name, u.email, u.password, u.role_id, u.profile_picture, r.role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = :email AND u.status = 'active'");
-        $stmt->bindParam(':email', $email);
-        $stmt->execute();
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($user && password_verify($password, $user['password'])) {
-            if (empty($user['role_id'])) {
-                error_log("Login failed for email: " . $email . " - User has no assigned role.");
-                return false;
-            }
-
-            $permissions = getRolePermissions($user['role_id']);
-
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['user_name'] = $user['name'];
-            $_SESSION['role_id'] = $user['role_id'];
-            $_SESSION['user_role'] = strtolower($user['role_name'] ?? 'guest');
-            $_SESSION['user_permissions'] = $permissions;
-            $_SESSION['user_profile_picture'] = !empty($user['profile_picture']) ? $user['profile_picture'] : '';
-
-
-            session_regenerate_id(true);
-            updateUserActivity();
-            return true;
-        } else {
-            error_log("Login failed for email: " . $email . " - Invalid credentials or inactive user.");
-            return false;
-        }
-    } catch (PDOException $e) {
-        error_log("Database error during login: " . $e->getMessage());
-        return false;
-    }
+// Function to check if user is logged in
+function isLoggedIn() {
+    return isset($_SESSION['user_id']);
 }
 
+// Function to logout
 function logoutUser() {
-    $_SESSION = array();
-    if (ini_get("session.use_cookies")) {
-        $params = session_get_cookie_params();
-        setcookie(session_name(), '', time() - 42000,
-            $params["path"], $params["domain"],
-            $params["secure"], $params["httponly"]
-        );
-    }
+    session_unset();
     session_destroy();
+}
+
+// Helper to get role name (if not loaded)
+function getRoleName($roleId) {
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT role_name FROM roles WHERE id = ?");
+    $stmt->execute([$roleId]);
+    return $stmt->fetchColumn() ?: 'guest';
 }
 ?>

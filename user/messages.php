@@ -1,144 +1,296 @@
 <?php
 /**
  * user/messages.php
- * FINAL & COMPLETE: A complete redesign of the messenger page with a Telegram-like UI
- * and a fully functional chat request system that uses the corrected model functions.
+ * FINAL UPDATE:
+ * - Mobile Friendly Fix (Sidebar hides on click)
+ * - Immediate Badge Removal (No refresh needed)
+ * - Delete Message & Clear Chat
  */
+
+require_once MODELS_PATH . 'db.php';
 require_once MODELS_PATH . 'messages.php';
 
 $pdo = connectDB();
 $currentUserId = $_SESSION['user_id'];
-$currentUserRole = $_SESSION['user_role'] ?? 'guest';
-$message = '';
+$chatWithId = isset($_GET['chat_with']) ? (int)$_GET['chat_with'] : 0;
+$chatUser = null;
 
-if (isset($_SESSION['status_message'])) {
-    $message = $_SESSION['status_message'];
-    unset($_SESSION['status_message']);
-}
+// Fetch Users List
+$chatPartners = fetchAll($pdo, "
+    SELECT DISTINCT u.id, u.name, u.profile_picture, u.role_id, r.role_name
+    FROM users u
+    JOIN roles r ON u.role_id = r.id
+    WHERE u.id != ? AND (r.role_name = 'Admin' OR u.id IN (SELECT sender_id FROM messages WHERE receiver_id = ?) OR u.id IN (SELECT receiver_id FROM messages WHERE sender_id = ?))
+", [$currentUserId, $currentUserId, $currentUserId]);
 
-$activeChatUserId = isset($_GET['chat_with']) ? (int)$_GET['chat_with'] : null;
-$users = getAllUsersWithConnectionStatus($currentUserId);
-$activeChatUser = null;
-$connection = null;
-$chatMessages = [];
-
-if ($activeChatUserId) {
-    // Mark messages as read from the active user
-    $stmt = $pdo->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?");
-    $stmt->execute([$activeChatUserId, $currentUserId]);
-
-    $activeChatUser = fetchOne($pdo, "SELECT id, name, profile_picture FROM users WHERE id = ?", [$activeChatUserId]);
-    $connection = checkConnectionStatus($currentUserId, $activeChatUserId);
-
-    // Allow chat if admin OR if connection is accepted
-    if ($currentUserRole === 'admin' || ($connection && $connection['status'] === 'accepted')) {
-        $chatMessages = fetchAll($pdo, "SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY created_at ASC", [$currentUserId, $activeChatUserId, $activeChatUserId, $currentUserId]);
-    }
+if ($chatWithId) {
+    $chatUser = fetchOne($pdo, "SELECT * FROM users WHERE id = ?", [$chatWithId]);
 }
 ?>
 
-<div class="messenger-container card shadow-sm">
-    <div class="messenger-sidebar">
-        <div class="sidebar-header"><h5 class="mb-0"><i class="fas fa-comments me-2"></i>Messenger</h5></div>
-        <div class="user-list">
-            <?php foreach ($users as $user): 
-                $profilePic = !empty($user['profile_picture']) ? BASE_URL . $user['profile_picture'] : ASSETS_URL . 'images/default-profile.png';
-                $activeClass = ($activeChatUserId == $user['id']) ? 'active' : '';
-            ?>
-                <a href="?page=messages&chat_with=<?= $user['id'] ?>" class="user-list-item <?= $activeClass ?>">
-                    <img src="<?= $profilePic ?>" alt="Avatar" class="avatar">
-                    <div class="user-info">
-                        <h6><?= htmlspecialchars($user['name']) ?></h6>
-                        <?php if($user['status'] === 'pending' && $user['action_user_id'] != $currentUserId): ?>
-                            <small class="text-success fw-bold">New Request</small>
-                        <?php else: ?>
-                            <small><?= htmlspecialchars($user['role_name'] ?? 'User') ?></small>
-                        <?php endif; ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        /* --- CORE STYLES --- */
+        body { background-color: #e5ddd5; overflow-x: hidden; }
+        .chat-container { display: flex; height: 85vh; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-top: 10px; }
+        
+        /* SIDEBAR */
+        .users-list { width: 30%; border-right: 1px solid #ddd; background: #fff; display: flex; flex-direction: column; }
+        .users-header { padding: 15px; background: #f0f2f5; font-weight: bold; color: #54656f; border-bottom: 1px solid #ddd; }
+        .users-scroll { flex: 1; overflow-y: auto; }
+        .user-item { display: flex; align-items: center; padding: 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; transition: 0.2s; }
+        .user-item:hover, .user-item.active { background: #f0f2f5; }
+        .user-avatar { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; margin-right: 10px; }
+        .unread-badge { background: #25d366; color: white; font-size: 11px; padding: 2px 6px; border-radius: 10px; margin-left: auto; }
+
+        /* CHAT AREA */
+        .chat-area { width: 70%; display: flex; flex-direction: column; background: #efeae2; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
+        .chat-header { padding: 10px; background: #f0f2f5; border-bottom: 1px solid #ddd; display: flex; align-items: center; justify-content: space-between; }
+        .online-status { font-size: 12px; color: #25d366; font-weight: bold; margin-left: 10px; display: none; }
+        
+        /* MESSAGES */
+        .messages-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+        .message { max-width: 75%; padding: 8px 12px; border-radius: 7px; font-size: 14.2px; position: relative; word-wrap: break-word; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        .message.sent { align-self: flex-end; background: #d9fdd3; border-radius: 7px 0 7px 7px; }
+        .message.received { align-self: flex-start; background: #ffffff; border-radius: 0 7px 7px 7px; }
+        .msg-time { font-size: 10px; color: #999; text-align: right; display: flex; justify-content: flex-end; gap: 3px; margin-top: 3px; }
+        .msg-attachment { width: 200px; height: 200px; object-fit: cover; border-radius: 5px; margin-bottom: 5px; border: 1px solid #ccc; cursor: pointer; }
+
+        /* DELETE ICON (Hidden by default, shown on hover) */
+        .delete-msg { display: none; margin-left: 10px; color: #dc3545; cursor: pointer; font-size: 12px; }
+        .message:hover .delete-msg { display: inline-block; }
+
+        /* INPUT AREA */
+        .input-area { padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 10px; }
+        .input-area input { flex: 1; padding: 12px; border-radius: 20px; border: none; outline: none; }
+        .btn-icon { background: none; border: none; font-size: 20px; color: #54656f; cursor: pointer; }
+        .btn-send { background: #00a884; color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; }
+
+        /* MOBILE RESPONSIVE FIX */
+        @media (max-width: 768px) {
+            .chat-container { height: 90vh; border-radius: 0; margin: 0; }
+            /* Hide users list if chat is active */
+            .users-list { width: 100%; display: <?= $chatWithId ? 'none' : 'flex' ?>; }
+            /* Hide chat area if no chat selected */
+            .chat-area { width: 100%; display: <?= $chatWithId ? 'flex' : 'none' ?>; }
+            .btn-back { display: block !important; margin-right: 10px; font-size: 18px; border: none; background: none; }
+        }
+        .btn-back { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid p-0">
+    <div class="chat-container">
+        
+        <div class="users-list">
+            <div class="users-header">Chats</div>
+            <div class="users-scroll">
+                <?php foreach ($chatPartners as $user): 
+                    $unread = getUnreadCount($currentUserId, $user['id']);
+                ?>
+                <a href="index.php?page=messages&chat_with=<?= $user['id'] ?>" 
+                   class="user-item <?= $chatWithId == $user['id'] ? 'active' : '' ?>"
+                   onclick="hideBadge('badge-<?= $user['id'] ?>')">
+                    
+                    <img src="<?= !empty($user['profile_picture']) ? $user['profile_picture'] : 'assets/img/default_avatar.png' ?>" class="user-avatar">
+                    <div style="flex:1;">
+                        <h6 class="m-0"><?= htmlspecialchars($user['name']) ?></h6>
+                        <small class="text-muted"><?= htmlspecialchars($user['role_name']) ?></small>
                     </div>
-                </a>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <div class="chat-main">
-        <?php if ($activeChatUser): ?>
-            <div class="chat-header">
-                <div class="d-flex align-items-center">
-                    <?php $activeProfilePic = !empty($activeChatUser['profile_picture']) ? BASE_URL . $activeChatUser['profile_picture'] : ASSETS_URL . 'images/default-profile.png'; ?>
-                    <img src="<?= $activeProfilePic ?>" alt="Avatar" class="avatar me-3">
-                    <h5 class="mb-0"><?= htmlspecialchars($activeChatUser['name']) ?></h5>
-                </div>
-            </div>
-
-            <div class="chat-body" id="chat-body">
-                <?php if ($currentUserRole === 'admin' || ($connection && $connection['status'] === 'accepted')): ?>
-                    <?php if (empty($chatMessages)): ?>
-                        <div class="request-prompt"><p>No messages yet. Start the conversation!</p></div>
+                    <?php if ($unread > 0): ?>
+                        <span id="badge-<?= $user['id'] ?>" class="unread-badge"><?= $unread ?></span>
                     <?php endif; ?>
-                    <?php foreach($chatMessages as $msg): 
-                        $msgClass = ($msg['sender_id'] == $currentUserId) ? 'sent' : 'received';
-                    ?>
-                    <div class="message-wrapper <?= $msgClass ?>">
-                        <div class="message-content">
-                            <?= nl2br(htmlspecialchars($msg['message_text'])) ?>
-                            <div class="message-time"><?= date('h:i A', strtotime($msg['created_at'])) ?></div>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <div class="chat-area">
+            <?php if ($chatWithId && $chatUser): ?>
+                
+                <div class="chat-header">
+                    <div class="d-flex align-items-center">
+                        <button class="btn-back" onclick="window.location.href='index.php?page=messages'"><i class="fas fa-arrow-left"></i></button>
+                        
+                        <img src="<?= !empty($chatUser['profile_picture']) ? $chatUser['profile_picture'] : 'assets/img/default_avatar.png' ?>" class="user-avatar" style="width: 35px; height: 35px;">
+                        <div>
+                            <h6 class="m-0"><?= htmlspecialchars($chatUser['name']) ?></h6>
+                            <span class="online-status" id="onlineIndicator">● Online</span>
                         </div>
                     </div>
-                    <?php endforeach; ?>
-                <?php elseif ($connection && $connection['status'] === 'pending' && $connection['action_user_id'] != $currentUserId): ?>
-                    <div class="request-prompt">
-                        <p><strong><?= htmlspecialchars($activeChatUser['name']) ?></strong> has sent you a chat request.</p>
-                        <form action="index.php" method="POST" class="d-inline">
-                            <input type="hidden" name="action" value="accept_request"><input type="hidden" name="page" value="messages">
-                            <input type="hidden" name="user_id" value="<?= $activeChatUserId ?>">
-                            <button type="submit" class="btn btn-success">Accept</button>
-                        </form>
-                         <form action="index.php" method="POST" class="d-inline">
-                            <input type="hidden" name="action" value="reject_request"><input type="hidden" name="page" value="messages">
-                            <input type="hidden" name="user_id" value="<?= $activeChatUserId ?>">
-                            <button type="submit" class="btn btn-danger">Reject</button>
-                        </form>
-                    </div>
-                <?php elseif ($connection && $connection['status'] === 'pending'): ?>
-                     <div class="request-prompt"><p>Your chat request to <strong><?= htmlspecialchars($activeChatUser['name']) ?></strong> is pending.</p></div>
-                <?php else: ?>
-                     <div class="request-prompt">
-                        <p>You are not connected with this user.</p>
-                        <form action="index.php" method="POST">
-                           <input type="hidden" name="action" value="send_request"><input type="hidden" name="page" value="messages">
-                           <input type="hidden" name="user_id" value="<?= $activeChatUserId ?>">
-                           <button type="submit" class="btn btn-primary">Send Chat Request</button>
-                        </form>
-                    </div>
-                <?php endif; ?>
-            </div>
-            
-            <?php if ($currentUserRole === 'admin' || ($connection && $connection['status'] === 'accepted')): ?>
-            <div class="chat-footer">
-                <form action="index.php" method="POST">
-                    <input type="hidden" name="action" value="send_message">
-                    <input type="hidden" name="page" value="messages">
-                    <input type="hidden" name="receiver_id" value="<?= $activeChatUserId ?>">
-                    <div class="input-group">
-                        <input type="text" name="message_text" class="form-control" placeholder="Type a message..." required autocomplete="off">
-                        <button class="btn btn-primary" type="submit"><i class="fas fa-paper-plane"></i></button>
-                    </div>
-                </form>
-            </div>
-            <?php endif; ?>
+                    
+                    <button onclick="clearChat()" class="btn btn-sm text-danger" title="Clear Chat">
+                        <i class="fas fa-trash-alt"></i> Clear Chat
+                    </button>
+                </div>
 
-        <?php else: ?>
-            <div class="welcome-prompt">
-                <i class="fas fa-comments fa-4x text-muted"></i>
-                <h4>Welcome to the Messenger</h4>
-                <p>Select a contact from the list to start a conversation.</p>
-            </div>
-        <?php endif; ?>
+                <div class="messages-box" id="msgBox">
+                    <div class="text-center mt-5 text-muted">Loading...</div>
+                </div>
+
+                <form id="chatForm" class="input-area" enctype="multipart/form-data">
+                    <input type="hidden" name="receiver_id" value="<?= $chatWithId ?>">
+                    <input type="file" id="fileInput" name="attachment" style="display: none;" onchange="previewFile()">
+                    <button type="button" class="btn-icon" onclick="document.getElementById('fileInput').click()"><i class="fas fa-paperclip"></i></button>
+                    <input type="text" id="message_text" name="message_text" placeholder="Type a message..." autocomplete="off">
+                    <button type="submit" class="btn-send"><i class="fas fa-paper-plane"></i></button>
+                </form>
+                <div id="filePreview" class="px-3 pb-2 small text-success fw-bold" style="display:none; background:#f0f2f5;"></div>
+
+            <?php else: ?>
+                <div class="d-flex align-items-center justify-content-center h-100 flex-column text-muted">
+                    <i class="fab fa-whatsapp fa-3x mb-3 text-success"></i>
+                    <h5>Select a contact to start chatting</h5>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
+
 <script>
-    const chatBody = document.getElementById('chat-body');
-    if (chatBody) {
-        chatBody.scrollTop = chatBody.scrollHeight;
+    const chatWithId = <?= $chatWithId ?>;
+    const currentUserId = <?= $currentUserId ?>;
+    const msgBox = document.getElementById('msgBox');
+    const onlineIndicator = document.getElementById('onlineIndicator');
+    const API_URL = 'app/chat_api.php'; 
+
+    // 1. Hide Badge Immediately on Click
+    function hideBadge(badgeId) {
+        const badge = document.getElementById(badgeId);
+        if (badge) badge.style.display = 'none';
+    }
+
+    // 2. Clear Entire Chat
+    function clearChat() {
+        if(!confirm('Are you sure you want to delete ALL messages with this user?')) return;
+        
+        let formData = new FormData();
+        formData.append('partner_id', chatWithId);
+
+        fetch(`${API_URL}?action=clear_chat`, { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if(data.status === 'success') {
+                msgBox.innerHTML = '<div class="text-center text-muted mt-3 small">No messages yet.</div>';
+            }
+        });
+    }
+
+    // 3. Delete Single Message
+    function deleteMessage(msgId) {
+        if(!confirm('Delete this message?')) return;
+
+        let formData = new FormData();
+        formData.append('message_id', msgId);
+
+        fetch(`${API_URL}?action=delete_message`, { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if(data.status === 'success') {
+                document.getElementById('msg-' + msgId).remove(); // Remove from UI
+            }
+        });
+    }
+
+    // 4. File Preview
+    function previewFile() {
+        const file = document.getElementById('fileInput').files[0];
+        const preview = document.getElementById('filePreview');
+        if (file) {
+            preview.style.display = 'block';
+            preview.innerHTML = `<i class="fas fa-image"></i> ${file.name}`;
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+
+    // 5. Fetch Messages
+    function fetchMessages() {
+        if (!chatWithId) return;
+
+        fetch(`${API_URL}?action=fetch_chat&chat_with=${chatWithId}`)
+            .then(res => res.json())
+            .then(data => {
+                onlineIndicator.style.display = (data.is_online) ? 'inline' : 'none';
+                let html = '';
+                
+                if (data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        let isMe = (msg.sender_id == currentUserId);
+                        let type = isMe ? 'sent' : 'received';
+                        let time = new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        
+                        let attachmentHtml = msg.attachment_path ? 
+                            `<a href="${msg.attachment_path}" target="_blank"><img src="${msg.attachment_path}" class="msg-attachment"></a>` : '';
+
+                        let ticks = '';
+                        if (isMe) {
+                            let color = (msg.is_read == 1) ? '#53bdeb' : '#999';
+                            let icon = (msg.is_read == 1) ? '<i class="fas fa-check-double"></i>' : '<i class="fas fa-check"></i>';
+                            ticks = `<span style="color:${color}; margin-left:3px;">${icon}</span>`;
+                        }
+
+                        // Add Trash Icon for My Messages
+                        let deleteIcon = isMe ? `<i class="fas fa-trash-alt delete-msg" onclick="deleteMessage(${msg.id})"></i>` : '';
+
+                        html += `
+                            <div class="message ${type}" id="msg-${msg.id}">
+                                ${attachmentHtml}
+                                <div>${msg.message || ''}</div>
+                                <div class="msg-time">${time} ${ticks} ${deleteIcon}</div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html = '<div class="text-center text-muted mt-3 small">No messages yet.</div>';
+                }
+
+                if (msgBox.innerHTML !== html) {
+                    let shouldScroll = (msgBox.scrollTop + msgBox.clientHeight >= msgBox.scrollHeight - 50);
+                    msgBox.innerHTML = html;
+                    if(shouldScroll || msgBox.innerHTML.length < 200) msgBox.scrollTop = msgBox.scrollHeight;
+                }
+            })
+            .catch(e => console.error(e));
+    }
+
+    // 6. Send Message Logic
+    if (document.getElementById('chatForm')) {
+        document.getElementById('chatForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            let formData = new FormData(this);
+            let text = document.getElementById('message_text').value;
+            let file = document.getElementById('fileInput').files[0];
+
+            if (!text && !file) return;
+
+            // Clear Input
+            document.getElementById('message_text').value = '';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('filePreview').style.display = 'none';
+
+            fetch(`${API_URL}?action=send_message`, { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    fetchMessages();
+                } else {
+                    alert('Error: ' + data.msg);
+                }
+            });
+        });
+    }
+
+    if (chatWithId) {
+        fetchMessages();
+        setInterval(fetchMessages, 2000);
+        setTimeout(() => { msgBox.scrollTop = msgBox.scrollHeight; }, 500);
     }
 </script>
+
+</body>
+</html>

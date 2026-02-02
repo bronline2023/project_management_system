@@ -2,7 +2,7 @@
 /**
  * admin/all_tasks.php
  * Displays a list of all work assignments.
- * FINAL: Corrected delete action to point to the central GET handler and edit button link.
+ * FINAL: Fixed Delete Button to use POST method for Balance Reversal.
  */
 $pdo = connectDB();
 $message = '';
@@ -29,6 +29,7 @@ $countStmt = $pdo->prepare($countSql);
 $countStmt->execute($params);
 $totalRecords = $countStmt->fetchColumn();
 $totalPages = ceil($totalRecords / $recordsPerPage);
+
 // Bind parameters for the main query
 $sql = "SELECT wa.id, cl.client_name, u.name AS assigned_to_name, cat.name AS category_name, sub.name AS subcategory_name, wa.work_description, wa.deadline, wa.status " . $sqlBase . " ORDER BY wa.created_at DESC LIMIT :limit OFFSET :offset";
 $stmt = $pdo->prepare($sql);
@@ -42,14 +43,15 @@ if (!empty($searchQuery)) {
 $stmt->execute();
 $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-
 if (!function_exists('getStatusBadgeColor')) {
     function getStatusBadgeColor($status) {
         switch ($status) {
             case 'pending': return 'warning';
             case 'in_process': return 'info';
+            case 'verified_completed': return 'success'; // Fixed status name
             case 'completed': return 'success';
             case 'cancelled': return 'danger';
+            case 'returned': return 'danger';
             default: return 'secondary';
         }
     }
@@ -93,14 +95,20 @@ $canEditOrDelete = in_array($userRole, ['admin', 'manager']);
                             <td><?= htmlspecialchars($task['client_name']) ?></td>
                             <td><?= htmlspecialchars($task['assigned_to_name']) ?></td>
                             <td><?= htmlspecialchars($task['category_name']) ?> - <?= htmlspecialchars($task['subcategory_name']) ?></td>
-                            <td><?= date('Y-m-d', strtotime($task['deadline'])) ?></td>
+                            <td><?= date('d M Y', strtotime($task['deadline'])) ?></td>
                             <td><span class="badge bg-<?= getStatusBadgeColor($task['status']) ?>"><?= ucwords(str_replace('_', ' ', $task['status'])) ?></span></td>
                             <td>
                                 <?php if ($canEditOrDelete): ?>
                                     <a href="<?= BASE_URL ?>?page=edit_task&id=<?= $task['id'] ?>" class="btn btn-sm btn-outline-primary" title="Edit Task"><i class="fas fa-edit"></i></a>
-                                    <a href="<?= BASE_URL ?>?page=all_tasks&action=delete_task&id=<?= $task['id'] ?>" class="btn btn-sm btn-outline-danger" title="Delete Task" onclick="return confirm('Are you sure you want to delete this task?');">
-                                        <i class="fas fa-trash-alt"></i>
-                                    </a>
+                                    
+                                    <form action="index.php" method="POST" class="d-inline" onsubmit="return confirm('Are you sure? If this task was completed, the balance transaction will be reversed.');">
+                                        <input type="hidden" name="action" value="delete_task">
+                                        <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Task">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </form>
+
                                 <?php endif; ?>
                             </td>
                         </tr>

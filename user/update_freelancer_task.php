@@ -1,162 +1,222 @@
 <?php
 /**
  * user/update_freelancer_task.php
- * A detailed view for freelancers to see all task details, update status, and submit work with a receipt.
- * Allows freelancers to return tasks to admin if there are issues.
- * FINAL & COMPLETE: Corrected to display all task information and provide a consistent update workflow.
+ * UPDATED: Handles "Admin Pre-collected Payment" Logic.
  */
-require_once MODELS_PATH . 'notifications.php';
 
 $pdo = connectDB();
 $currentUserId = $_SESSION['user_id'];
-$message = '';
 $taskId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$task = null;
+$message = $_SESSION['status_message'] ?? '';
+unset($_SESSION['status_message']);
 
-if ($taskId > 0) {
-    // Query to fetch all necessary details
-    $task = fetchOne($pdo, "
-        SELECT 
-            wa.*, cl.client_name, cl.phone as client_phone, cl.email as client_email,
-            cat.name as category_name, sub.name as subcategory_name
-        FROM work_assignments wa
-        JOIN clients cl ON wa.client_id = cl.id
-        JOIN categories cat ON wa.category_id = cat.id
-        JOIN subcategories sub ON wa.subcategory_id = sub.id
-        WHERE wa.id = ? AND wa.assigned_to_user_id = ?
-    ", [$taskId, $currentUserId]);
+// Fetch Task Details including payment_status
+$task = fetchOne($pdo, "
+    SELECT wa.*, cl.client_name, cl.phone as client_phone, cl.email as client_email,
+           cat.name as category_name, cu.customer_name
+    FROM work_assignments wa
+    LEFT JOIN clients cl ON wa.client_id = cl.id
+    LEFT JOIN customers cu ON wa.customer_id = cu.id
+    JOIN categories cat ON wa.category_id = cat.id
+    WHERE wa.id = ? AND wa.assigned_to_user_id = ?
+", [$taskId, $currentUserId]);
 
-    if (!$task) {
-        $message = '<div class="alert alert-danger">Task not found or you do not have permission to view it.</div>';
-    }
-} else {
-     $message = '<div class="alert alert-danger">No Task ID provided.</div>';
-}
-
-// All POST actions are now handled in index.php to prevent errors.
-if (isset($_SESSION['status_message'])) {
-    $message = $_SESSION['status_message'];
-    unset($_SESSION['status_message']);
-}
+if (!$task) { echo '<div class="alert alert-danger m-3">Task not found or access denied.</div>'; exit; }
 
 $settings = fetchOne($pdo, "SELECT currency_symbol FROM settings LIMIT 1");
 $currencySymbol = htmlspecialchars($settings['currency_symbol'] ?? '₹');
 
-// Determine if the task is editable based on its status
-$isEditable = in_array($task['status'], ['pending', 'in_process', 'returned']);
+// Lock Logic
+$isLocked = in_array($task['status'], ['pending_verification', 'verified_completed', 'cancelled']);
+
+// --- NEW LOGIC: CHECK IF ADMIN ALREADY COLLECTED PAYMENT ---
+// If payment_status is 'paid', it means Admin has the money.
+$isAdminCollected = (strtolower($task['payment_status']) === 'paid');
+
+// Fetch Other Freelancers (For Transfer)
+$otherUsers = fetchAll($pdo, "
+    SELECT u.id, u.name, r.role_name 
+    FROM users u 
+    JOIN roles r ON u.role_id = r.id 
+    WHERE u.id != ? AND r.role_name IN ('Freelancer', 'Data Entry Operator', 'DEO')
+    ORDER BY u.name ASC
+", [$currentUserId]);
 ?>
-<h2 class="mb-4">Task Details & Submission</h2>
-<?php if ($message) { include VIEWS_PATH . 'components/message_box.php'; } ?>
 
-<?php if ($task): ?>
-<div class="card shadow-lg rounded-3">
-    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Task #<?= htmlspecialchars($task['id']) ?></h5>
-        <a href="<?= BASE_URL ?>?page=my_freelancer_tasks" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i>Back to My Tasks</a>
+<div class="container-fluid">
+    <div class="d-flex justify-content-between mb-4">
+        <h3 class="h3 text-gray-800">Task #<?= $task['id'] ?> Management</h3>
+        <a href="index.php?page=my_freelancer_tasks" class="btn btn-secondary btn-sm"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
-    <div class="card-body p-4">
-        <div class="row">
-            <div class="col-lg-7 border-end pe-lg-4 mb-4 mb-lg-0">
-                <h4>Task Information</h4>
-                <dl class="row">
-                    <dt class="col-sm-4">Client Name:</dt><dd class="col-sm-8 fw-bold"><?= htmlspecialchars($task['client_name']) ?></dd>
-                    <dt class="col-sm-4">Client Phone:</dt><dd class="col-sm-8"><?= htmlspecialchars($task['client_phone'] ?? 'N/A') ?></dd>
-                    <dt class="col-sm-4">Client Email:</dt><dd class="col-sm-8"><?= htmlspecialchars($task['client_email'] ?? 'N/A') ?></dd>
-                    <hr class="my-2"><dt class="col-sm-4">Service:</dt><dd class="col-sm-8"><?= htmlspecialchars($task['category_name']) ?> - <?= htmlspecialchars($task['subcategory_name']) ?></dd>
-                    <dt class="col-sm-4">Description:</dt><dd class="col-sm-8"><?= nl2br(htmlspecialchars($task['work_description'])) ?></dd>
-                    <dt class="col-sm-4">Admin Notes:</dt><dd class="col-sm-8"><i><?= !empty($task['admin_notes']) ? nl2br(htmlspecialchars($task['admin_notes'])) : 'No notes from admin.' ?></i></dd>
-                    <hr class="my-2"><dt class="col-sm-4">Deadline:</dt><dd class="col-sm-8"><span class="badge bg-danger fs-6"><?= date('F j, Y', strtotime($task['deadline'])) ?></span></dd>
-                    <dt class="col-sm-4">Your Earning:</dt><dd class="col-sm-8"><span class="badge bg-success fs-6"><?= $currencySymbol ?><?= number_format($task['task_price'], 2) ?></span></dd>
-                </dl>
-                <?php if ($task['completion_receipt_path']): ?>
-                    <hr class="my-2">
-                    <p class="mb-0"><i class="fas fa-receipt"></i> **Completion Receipt:** <a href="<?= BASE_URL . htmlspecialchars($task['completion_receipt_path']) ?>" target="_blank">View Uploaded Receipt</a></p>
-                <?php endif; ?>
-            </div>
 
-            <div class="col-lg-5 ps-lg-4">
-                <h4>Update Progress</h4>
-                <?php if ($task['status'] === 'pending_verification'): ?>
-                    <div class="alert alert-info text-center"><i class="fas fa-info-circle me-2"></i> This task is currently awaiting verification.</div>
-                <?php elseif ($task['status'] === 'verified_completed'): ?>
-                    <div class="alert alert-success text-center"><i class="fas fa-check-circle me-2"></i> This task has been marked as completed.</div>
-                <?php elseif ($task['status'] === 'cancelled'): ?>
-                     <div class="alert alert-danger text-center"><i class="fas fa-times-circle me-2"></i> This task has been cancelled.</div>
-                <?php else: ?>
-                    <form action="index.php" method="POST" class="mb-4">
-                        <input type="hidden" name="page" value="update_freelancer_task">
-                        <input type="hidden" name="task_id" value="<?= $taskId ?>">
-                        <input type="hidden" name="action" value="update_user_task">
-                        <div class="mb-3">
-                            <label class="form-label"><strong>Current Status</strong></label>
-                            <div class="input-group">
-                                <select name="status" class="form-select">
-                                    <option value="pending" <?= $task['status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
-                                    <option value="in_process" <?= $task['status'] === 'in_process' ? 'selected' : '' ?>>In Process</option>
-                                </select>
-                                <button type="submit" class="btn btn-secondary">Update</button>
-                            </div>
+    <?php if ($message) echo $message; ?>
+
+    <?php if ($isLocked): ?>
+        <div class="alert alert-warning border-left-warning shadow">
+            <h5 class="alert-heading"><i class="fas fa-lock"></i> Task Locked</h5>
+            <p class="mb-0">Task status: <strong><?= ucfirst(str_replace('_', ' ', $task['status'])) ?></strong></p>
+        </div>
+    <?php endif; ?>
+
+    <div class="row">
+        <div class="col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">Task Details</div>
+                <div class="card-body">
+                    <p><strong>Service:</strong> <?= htmlspecialchars($task['category_name']) ?></p>
+                    <p><strong>Client:</strong> <?= htmlspecialchars($task['client_name']) ?></p>
+                    
+                    <p>
+                        <strong>Payment Status:</strong> 
+                        <?php if ($isAdminCollected): ?>
+                            <span class="badge bg-success">PAID (Received by Admin)</span>
+                        <?php else: ?>
+                            <span class="badge bg-warning text-dark"><?= ucfirst($task['payment_status']) ?></span>
+                        <?php endif; ?>
+                    </p>
+
+                    <p><strong>Deadline:</strong> <span class="text-danger fw-bold"><?= date('d M Y', strtotime($task['deadline'])) ?></span></p>
+                    
+                    <div class="p-3 bg-light rounded border mb-3">
+                        <strong>Description:</strong><br>
+                        <?= nl2br(htmlspecialchars($task['work_description'])) ?>
+                    </div>
+
+                    <?php if (!empty($task['attachment_path'])): ?>
+                        <div class="alert alert-info d-flex align-items-center justify-content-between">
+                            <span><i class="fas fa-paperclip me-2"></i> <strong>Admin Attachment:</strong></span>
+                            <a href="<?= htmlspecialchars($task['attachment_path']) ?>" class="btn btn-sm btn-info text-white" target="_blank" download>Download</a>
                         </div>
-                    </form>
+                    <?php endif; ?>
+
                     <hr>
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-warning w-100" data-bs-toggle="modal" data-bs-target="#returnTaskModal">
-                            <i class="fas fa-undo-alt me-2"></i>Return Task to Admin
-                        </button>
+                    <div class="row text-center">
+                        <div class="col-6 border-end">
+                            <small>Total Fee (Collect)</small>
+                            <h4 class="text-danger"><?= $currencySymbol . number_format($task['fee'], 2) ?></h4>
+                        </div>
+                        <div class="col-6">
+                            <small>Your Earning</small>
+                            <h4 class="text-success"><?= $currencySymbol . number_format($task['task_price'], 2) ?></h4>
+                        </div>
                     </div>
-                    <form action="index.php" method="POST" enctype="multipart/form-data">
-                         <input type="hidden" name="page" value="update_freelancer_task">
-                        <input type="hidden" name="task_id" value="<?= $taskId ?>">
-                        <input type="hidden" name="action" value="submit_for_verification">
-                        <div class="mb-3">
-                            <label for="completion_receipt" class="form-label"><strong>Attach Completion Proof <span class="text-danger">*</span></strong></label>
-                            <input type="file" class="form-control" id="completion_receipt" name="completion_receipt" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="user_notes" class="form-label"><strong>Notes for Admin</strong></label>
-                            <textarea name="user_notes" class="form-control" rows="3" placeholder="Add any final notes..."><?= htmlspecialchars($task['user_notes'] ?? '') ?></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-lg w-100"><i class="fas fa-paper-plane me-2"></i>Submit for Verification</button>
-                    </form>
-                <?php endif; ?>
+                </div>
             </div>
-        </div>
-    </div>
-</div>
 
-<div class="modal fade" id="returnTaskModal" tabindex="-1" aria-labelledby="returnTaskModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form action="index.php" method="POST">
-                <input type="hidden" name="page" value="update_freelancer_task&id=<?= $taskId ?>">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="returnTaskModalLabel">Return Task to Admin</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <?php if (!$isLocked): ?>
+            <div class="card shadow mb-4 border-left-info">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-info"><i class="fas fa-exchange-alt"></i> Transfer Task</h6>
                 </div>
-                <div class="modal-body">
-                    <input type="hidden" name="task_id" value="<?= $taskId ?>">
-                    <input type="hidden" name="action" value="return_task_to_admin">
-                    <div class="mb-3">
-                        <label for="return_reason" class="form-label">Reason for Returning <span class="text-danger">*</span></label>
-                        <select class="form-select" name="return_reason" id="return_reason" required>
-                            <option value="">-- Select a Reason --</option>
-                            <option value="Client Not Responding">Client Not Responding</option>
-                            <option value="Insufficient Information">Insufficient Information from Client</option>
-                            <option value="Technical Issue">Facing a Technical Issue</option>
-                            <option value="Other">Other (Please specify in notes)</option>
-                        </select>
+                <div class="card-body">
+                    <form action="index.php" method="POST" onsubmit="return confirm('Transfer this task?');">
+                        <input type="hidden" name="action" value="freelancer_transfer_task">
+                        <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
+                        <div class="input-group">
+                            <select name="transfer_to_user_id" class="form-select" required>
+                                <option value="">-- Select Freelancer --</option>
+                                <?php foreach ($otherUsers as $user): ?>
+                                    <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="submit" class="btn btn-info text-white">Transfer</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <div class="col-lg-5">
+            <?php if (!$isLocked): ?>
+            <div class="card shadow">
+                <div class="card-header bg-dark text-white">Update & Submit</div>
+                <div class="card-body">
+                    
+                    <form action="index.php" method="POST" class="mb-3">
+                        <input type="hidden" name="action" value="update_user_task">
+                        <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
+                        <label class="small fw-bold">Update Status:</label>
+                        <div class="input-group">
+                            <select name="status" class="form-select form-select-sm">
+                                <option value="pending" <?= $task['status']=='pending'?'selected':'' ?>>Pending</option>
+                                <option value="in_process" <?= $task['status']=='in_process'?'selected':'' ?>>In Process</option>
+                            </select>
+                            <button type="submit" class="btn btn-sm btn-secondary">Update</button>
+                        </div>
+                    </form>
+
+                    <hr>
+
+                    <h6 class="text-success fw-bold">Submit Completed Work</h6>
+                    <form action="index.php" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="submit_for_verification">
+                        <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
+                        
+                        <div class="mb-3">
+                            <label class="small fw-bold">Payment Collected By? <span class="text-danger">*</span></label>
+                            
+                            <?php if ($isAdminCollected): ?>
+                                <div class="alert alert-success py-2 px-3 mb-0" style="font-size: 0.9rem;">
+                                    <i class="fas fa-check-circle"></i> <strong>Already Received by Company</strong>
+                                </div>
+                                <input type="hidden" name="payment_collected_by" value="company">
+                                <small class="text-muted d-block mt-1">
+                                    Admin has already collected the fee. You will receive <strong>+<?= $currencySymbol.$task['task_price'] ?></strong> in your wallet.
+                                </small>
+
+                            <?php else: ?>
+                                <select name="payment_collected_by" class="form-select form-select-sm" required>
+                                    <option value="">-- Select Option --</option>
+                                    <option value="company">Company (Client Paid Online)</option>
+                                    <option value="self">Self (I Collected Cash)</option>
+                                </select>
+                                <small class="text-muted">
+                                    Select 'Self' if you took cash. Select 'Company' if client paid Admin.
+                                </small>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="small">Work File</label>
+                            <input type="file" name="work_file" class="form-control form-control-sm">
+                        </div>
+                        <div class="mb-2">
+                            <label class="small">Receipt <span class="text-danger">*</span></label>
+                            <input type="file" name="completion_receipt" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <textarea name="user_notes" class="form-control form-control-sm" placeholder="Notes..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 fw-bold">Submit & Lock</button>
+                    </form>
+
+                    <hr>
+                    <button class="btn btn-outline-danger w-100 btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#returnBox">
+                        <i class="fas fa-undo"></i> Return / Cancel Task
+                    </button>
+                    <div class="collapse mt-2" id="returnBox">
+                        <div class="card card-body p-2 bg-light">
+                            <form action="index.php" method="POST">
+                                <input type="hidden" name="action" value="return_task_to_admin">
+                                <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
+                                <label class="small">Reason:</label>
+                                <select name="return_reason" class="form-select form-select-sm mb-2" required>
+                                    <option value="Customer Wants to Cancel">Customer Wants to Cancel</option>
+                                    <option value="Cannot Do This Task">Cannot Do This Task</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <textarea name="return_notes" class="form-control form-control-sm mb-2" placeholder="Explain..." required></textarea>
+                                <button type="submit" class="btn btn-danger btn-sm w-100">Confirm Return</button>
+                            </form>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="return_notes" class="form-label">Additional Notes <span class="text-danger">*</span></label>
-                        <textarea class="form-control" name="return_notes" id="return_notes" rows="4" placeholder="Explain the issue in detail for the admin." required></textarea>
-                    </div>
+
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Confirm Return</button>
-                </div>
-            </form>
+            </div>
+            <?php else: ?>
+                <div class="card"><div class="card-body text-center text-muted">Task is Locked.</div></div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
-<?php endif; ?>
