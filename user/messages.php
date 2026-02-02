@@ -1,10 +1,7 @@
 <?php
 /**
  * user/messages.php
- * FINAL UPDATE:
- * - Mobile Friendly Fix (Sidebar hides on click)
- * - Immediate Badge Removal (No refresh needed)
- * - Delete Message & Clear Chat
+ * FIXED: Mobile Send Button Visibility & Layout
  */
 
 require_once MODELS_PATH . 'db.php';
@@ -35,48 +32,98 @@ if ($chatWithId) {
     <style>
         /* --- CORE STYLES --- */
         body { background-color: #e5ddd5; overflow-x: hidden; }
-        .chat-container { display: flex; height: 85vh; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-top: 10px; }
         
-        /* SIDEBAR */
+        /* Container Height Adjustment */
+        .chat-container { 
+            display: flex; 
+            height: 80vh; /* Reduced slightly to fit mobile screens better */
+            background: #fff; 
+            border-radius: 10px; 
+            overflow: hidden; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            margin-top: 5px; 
+        }
+        
+        /* SIDEBAR & CHAT AREA (Default Desktop) */
         .users-list { width: 30%; border-right: 1px solid #ddd; background: #fff; display: flex; flex-direction: column; }
-        .users-header { padding: 15px; background: #f0f2f5; font-weight: bold; color: #54656f; border-bottom: 1px solid #ddd; }
         .users-scroll { flex: 1; overflow-y: auto; }
-        .user-item { display: flex; align-items: center; padding: 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; transition: 0.2s; }
-        .user-item:hover, .user-item.active { background: #f0f2f5; }
-        .user-avatar { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; margin-right: 10px; }
-        .unread-badge { background: #25d366; color: white; font-size: 11px; padding: 2px 6px; border-radius: 10px; margin-left: auto; }
-
-        /* CHAT AREA */
-        .chat-area { width: 70%; display: flex; flex-direction: column; background: #efeae2; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
-        .chat-header { padding: 10px; background: #f0f2f5; border-bottom: 1px solid #ddd; display: flex; align-items: center; justify-content: space-between; }
-        .online-status { font-size: 12px; color: #25d366; font-weight: bold; margin-left: 10px; display: none; }
         
-        /* MESSAGES */
-        .messages-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
-        .message { max-width: 75%; padding: 8px 12px; border-radius: 7px; font-size: 14.2px; position: relative; word-wrap: break-word; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
-        .message.sent { align-self: flex-end; background: #d9fdd3; border-radius: 7px 0 7px 7px; }
-        .message.received { align-self: flex-start; background: #ffffff; border-radius: 0 7px 7px 7px; }
-        .msg-time { font-size: 10px; color: #999; text-align: right; display: flex; justify-content: flex-end; gap: 3px; margin-top: 3px; }
-        .msg-attachment { width: 200px; height: 200px; object-fit: cover; border-radius: 5px; margin-bottom: 5px; border: 1px solid #ccc; cursor: pointer; }
+        .chat-area { width: 70%; display: flex; flex-direction: column; background: #efeae2; }
+        
+        .users-header, .chat-header { padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #ddd; }
+        .user-item { display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; }
+        .user-item:hover, .user-item.active { background: #f0f2f5; }
+        .user-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 10px; }
+        .unread-badge { background: #25d366; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: auto; }
 
-        /* DELETE ICON (Hidden by default, shown on hover) */
-        .delete-msg { display: none; margin-left: 10px; color: #dc3545; cursor: pointer; font-size: 12px; }
+        /* MESSAGES */
+        .messages-box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 8px; }
+        .message { max-width: 75%; padding: 8px 10px; border-radius: 7px; font-size: 14px; position: relative; word-wrap: break-word; }
+        .message.sent { align-self: flex-end; background: #d9fdd3; }
+        .message.received { align-self: flex-start; background: #ffffff; }
+        .msg-time { font-size: 9px; color: #999; text-align: right; display: flex; justify-content: flex-end; gap: 3px; margin-top: 2px; }
+        .msg-attachment { width: 150px; height: 150px; object-fit: cover; border-radius: 5px; margin-bottom: 5px; cursor: pointer; border: 1px solid #ccc; }
+        .delete-msg { display: none; margin-left: 5px; color: #dc3545; cursor: pointer; font-size: 11px; }
         .message:hover .delete-msg { display: inline-block; }
 
-        /* INPUT AREA */
-        .input-area { padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 10px; }
-        .input-area input { flex: 1; padding: 12px; border-radius: 20px; border: none; outline: none; }
-        .btn-icon { background: none; border: none; font-size: 20px; color: #54656f; cursor: pointer; }
-        .btn-send { background: #00a884; color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; }
+        /* INPUT AREA (FIXED FOR MOBILE) */
+        .input-area { 
+            padding: 8px; 
+            background: #f0f2f5; 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; /* Space between elements */
+        }
+        
+        .input-area input { 
+            flex: 1; /* Takes available space */
+            padding: 10px; 
+            border-radius: 20px; 
+            border: none; 
+            outline: none; 
+            font-size: 15px;
+            min-width: 0; /* Prevents overflow in flexbox */
+        }
+        
+        .btn-icon { background: none; border: none; font-size: 20px; color: #54656f; cursor: pointer; padding: 0 5px; }
+        
+        .btn-send { 
+            background: #00a884; 
+            color: white; 
+            border: none; 
+            padding: 10px 12px; 
+            border-radius: 50%; 
+            cursor: pointer; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px; /* Fixed width prevents shrinking */
+            height: 40px;
+        }
 
         /* MOBILE RESPONSIVE FIX */
         @media (max-width: 768px) {
-            .chat-container { height: 90vh; border-radius: 0; margin: 0; }
-            /* Hide users list if chat is active */
+            .chat-container { 
+                height: 85vh; /* Increase height on mobile */
+                border-radius: 0; 
+                margin-top: 0;
+            }
+            
+            /* Toggle Views */
             .users-list { width: 100%; display: <?= $chatWithId ? 'none' : 'flex' ?>; }
-            /* Hide chat area if no chat selected */
             .chat-area { width: 100%; display: <?= $chatWithId ? 'flex' : 'none' ?>; }
+            
             .btn-back { display: block !important; margin-right: 10px; font-size: 18px; border: none; background: none; }
+            
+            /* Compact Message Box on Mobile */
+            .messages-box { padding: 10px; }
+            .message { font-size: 13.5px; padding: 6px 10px; }
+            
+            /* Fix Input Area on Small Screens */
+            .input-area { padding: 5px; }
+            .input-area input { padding: 8px 12px; }
+            .btn-icon { font-size: 18px; }
+            .btn-send { min-width: 38px; height: 38px; padding: 8px; }
         }
         .btn-back { display: none; }
     </style>
@@ -124,7 +171,7 @@ if ($chatWithId) {
                     </div>
                     
                     <button onclick="clearChat()" class="btn btn-sm text-danger" title="Clear Chat">
-                        <i class="fas fa-trash-alt"></i> Clear Chat
+                        <i class="fas fa-trash-alt"></i>
                     </button>
                 </div>
 
@@ -135,6 +182,7 @@ if ($chatWithId) {
                 <form id="chatForm" class="input-area" enctype="multipart/form-data">
                     <input type="hidden" name="receiver_id" value="<?= $chatWithId ?>">
                     <input type="file" id="fileInput" name="attachment" style="display: none;" onchange="previewFile()">
+                    
                     <button type="button" class="btn-icon" onclick="document.getElementById('fileInput').click()"><i class="fas fa-paperclip"></i></button>
                     <input type="text" id="message_text" name="message_text" placeholder="Type a message..." autocomplete="off">
                     <button type="submit" class="btn-send"><i class="fas fa-paper-plane"></i></button>
@@ -144,7 +192,7 @@ if ($chatWithId) {
             <?php else: ?>
                 <div class="d-flex align-items-center justify-content-center h-100 flex-column text-muted">
                     <i class="fab fa-whatsapp fa-3x mb-3 text-success"></i>
-                    <h5>Select a contact to start chatting</h5>
+                    <h5>Select a contact</h5>
                 </div>
             <?php endif; ?>
         </div>
@@ -158,45 +206,29 @@ if ($chatWithId) {
     const onlineIndicator = document.getElementById('onlineIndicator');
     const API_URL = 'app/chat_api.php'; 
 
-    // 1. Hide Badge Immediately on Click
     function hideBadge(badgeId) {
         const badge = document.getElementById(badgeId);
         if (badge) badge.style.display = 'none';
     }
 
-    // 2. Clear Entire Chat
     function clearChat() {
-        if(!confirm('Are you sure you want to delete ALL messages with this user?')) return;
-        
+        if(!confirm('Delete ALL messages?')) return;
         let formData = new FormData();
         formData.append('partner_id', chatWithId);
-
         fetch(`${API_URL}?action=clear_chat`, { method: 'POST', body: formData })
         .then(res => res.json())
-        .then(data => {
-            if(data.status === 'success') {
-                msgBox.innerHTML = '<div class="text-center text-muted mt-3 small">No messages yet.</div>';
-            }
-        });
+        .then(data => { if(data.status === 'success') msgBox.innerHTML = '<div class="text-center text-muted mt-3 small">No messages yet.</div>'; });
     }
 
-    // 3. Delete Single Message
     function deleteMessage(msgId) {
-        if(!confirm('Delete this message?')) return;
-
+        if(!confirm('Delete message?')) return;
         let formData = new FormData();
         formData.append('message_id', msgId);
-
         fetch(`${API_URL}?action=delete_message`, { method: 'POST', body: formData })
         .then(res => res.json())
-        .then(data => {
-            if(data.status === 'success') {
-                document.getElementById('msg-' + msgId).remove(); // Remove from UI
-            }
-        });
+        .then(data => { if(data.status === 'success') document.getElementById('msg-' + msgId).remove(); });
     }
 
-    // 4. File Preview
     function previewFile() {
         const file = document.getElementById('fileInput').files[0];
         const preview = document.getElementById('filePreview');
@@ -208,88 +240,48 @@ if ($chatWithId) {
         }
     }
 
-    // 5. Fetch Messages
     function fetchMessages() {
         if (!chatWithId) return;
-
         fetch(`${API_URL}?action=fetch_chat&chat_with=${chatWithId}`)
             .then(res => res.json())
             .then(data => {
                 onlineIndicator.style.display = (data.is_online) ? 'inline' : 'none';
                 let html = '';
-                
                 if (data.messages.length > 0) {
                     data.messages.forEach(msg => {
                         let isMe = (msg.sender_id == currentUserId);
                         let type = isMe ? 'sent' : 'received';
                         let time = new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                        
-                        let attachmentHtml = msg.attachment_path ? 
-                            `<a href="${msg.attachment_path}" target="_blank"><img src="${msg.attachment_path}" class="msg-attachment"></a>` : '';
-
-                        let ticks = '';
-                        if (isMe) {
-                            let color = (msg.is_read == 1) ? '#53bdeb' : '#999';
-                            let icon = (msg.is_read == 1) ? '<i class="fas fa-check-double"></i>' : '<i class="fas fa-check"></i>';
-                            ticks = `<span style="color:${color}; margin-left:3px;">${icon}</span>`;
-                        }
-
-                        // Add Trash Icon for My Messages
+                        let attachmentHtml = msg.attachment_path ? `<a href="${msg.attachment_path}" target="_blank"><img src="${msg.attachment_path}" class="msg-attachment"></a>` : '';
+                        let ticks = isMe ? (msg.is_read == 1 ? '<i class="fas fa-check-double text-info"></i>' : '<i class="fas fa-check"></i>') : '';
                         let deleteIcon = isMe ? `<i class="fas fa-trash-alt delete-msg" onclick="deleteMessage(${msg.id})"></i>` : '';
 
-                        html += `
-                            <div class="message ${type}" id="msg-${msg.id}">
-                                ${attachmentHtml}
-                                <div>${msg.message || ''}</div>
-                                <div class="msg-time">${time} ${ticks} ${deleteIcon}</div>
-                            </div>
-                        `;
+                        html += `<div class="message ${type}" id="msg-${msg.id}">${attachmentHtml}<div>${msg.message || ''}</div><div class="msg-time">${time} ${ticks} ${deleteIcon}</div></div>`;
                     });
-                } else {
-                    html = '<div class="text-center text-muted mt-3 small">No messages yet.</div>';
-                }
-
+                } else { html = '<div class="text-center text-muted mt-3 small">No messages yet.</div>'; }
                 if (msgBox.innerHTML !== html) {
                     let shouldScroll = (msgBox.scrollTop + msgBox.clientHeight >= msgBox.scrollHeight - 50);
                     msgBox.innerHTML = html;
                     if(shouldScroll || msgBox.innerHTML.length < 200) msgBox.scrollTop = msgBox.scrollHeight;
                 }
-            })
-            .catch(e => console.error(e));
+            });
     }
 
-    // 6. Send Message Logic
     if (document.getElementById('chatForm')) {
         document.getElementById('chatForm').addEventListener('submit', function(e) {
             e.preventDefault();
             let formData = new FormData(this);
             let text = document.getElementById('message_text').value;
             let file = document.getElementById('fileInput').files[0];
-
             if (!text && !file) return;
-
-            // Clear Input
             document.getElementById('message_text').value = '';
             document.getElementById('fileInput').value = '';
             document.getElementById('filePreview').style.display = 'none';
-
-            fetch(`${API_URL}?action=send_message`, { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    fetchMessages();
-                } else {
-                    alert('Error: ' + data.msg);
-                }
-            });
+            fetch(`${API_URL}?action=send_message`, { method: 'POST', body: formData }).then(res => res.json()).then(data => fetchMessages());
         });
     }
 
-    if (chatWithId) {
-        fetchMessages();
-        setInterval(fetchMessages, 2000);
-        setTimeout(() => { msgBox.scrollTop = msgBox.scrollHeight; }, 500);
-    }
+    if (chatWithId) { fetchMessages(); setInterval(fetchMessages, 2000); setTimeout(() => { msgBox.scrollTop = msgBox.scrollHeight; }, 500); }
 </script>
 
 </body>

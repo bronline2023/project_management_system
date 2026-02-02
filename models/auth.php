@@ -1,7 +1,9 @@
 <?php
 /**
  * models/auth.php
- * Fixed: Uses 'last_activity' column correctly.
+ * FIXED: 
+ * 1. Converts Role Name to lowercase (Fixes login redirection issues).
+ * 2. Handles 'last_activity' update safely without crashing.
  */
 
 // Function to login user
@@ -15,14 +17,17 @@ function loginUser($email, $password) {
         // Set Session Variables
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_name'] = $user['name'];
-        $_SESSION['user_role'] = getRoleName($user['role_id']); // Helper function from roles.php
         $_SESSION['user_profile_picture'] = $user['profile_picture'];
+        
+        // --- CRITICAL FIX: Convert Role to lowercase ---
+        // This ensures 'Freelancer' matches 'freelancer' in actions.php
+        $_SESSION['user_role'] = strtolower(getRoleName($user['role_id'])); 
         
         // Load Permissions
         require_once MODELS_PATH . 'roles.php';
         $_SESSION['user_permissions'] = getRolePermissions($user['role_id']);
 
-        // Update Activity Time
+        // Update Activity (Safe Mode)
         updateUserActivity($user['id']);
 
         return true;
@@ -39,14 +44,13 @@ function updateUserActivity($userId = null) {
 
     if ($userId) {
         try {
-            // FIXED: Using 'last_activity' (Standardized Name)
-            // Also updating 'last_activity_at' just in case legacy code needs it
-            $sql = "UPDATE users SET last_activity = NOW(), last_activity_at = NOW() WHERE id = ?";
+            // Only update 'last_activity' which we created correctly
+            $sql = "UPDATE users SET last_activity = NOW() WHERE id = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$userId]);
-        } catch (PDOException $e) {
-            // Silently fail or log error to avoid breaking the page
-            error_log("Error updating user activity: " . $e->getMessage());
+        } catch (Exception $e) {
+            // If error occurs (like column missing), simply log it and DO NOT stop login
+            error_log("Activity Update Error: " . $e->getMessage());
         }
     }
 }
@@ -62,11 +66,12 @@ function logoutUser() {
     session_destroy();
 }
 
-// Helper to get role name (if not loaded)
+// Helper to get role name
 function getRoleName($roleId) {
     global $pdo;
     $stmt = $pdo->prepare("SELECT role_name FROM roles WHERE id = ?");
     $stmt->execute([$roleId]);
-    return $stmt->fetchColumn() ?: 'guest';
+    $role = $stmt->fetchColumn();
+    return $role ? $role : 'guest';
 }
 ?>
