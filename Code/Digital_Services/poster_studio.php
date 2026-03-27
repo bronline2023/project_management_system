@@ -30,12 +30,16 @@ $user_role = $_SESSION['user_role'] ?? 'guest';
 } catch (Exception $e) {}
 
 $loaded_draft_json = null;
-if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
+$loaded_draft_name = '';
+$current_draft_id = isset($_GET['draft_id']) ? (int)$_GET['draft_id'] : 0;
+
+if ($current_draft_id > 0 && isset($_SESSION['user_id'])) {
     try {
-        $stmt_draft = $pdo->prepare("SELECT canvas_json FROM digital_service_history WHERE id = ? AND user_id = ? AND is_draft = 1");
-        $stmt_draft->execute([$_GET['draft_id'], $_SESSION['user_id']]);
+        $stmt_draft = $pdo->prepare("SELECT canvas_json, draft_name FROM digital_service_history WHERE id = ? AND user_id = ? AND is_draft = 1");
+        $stmt_draft->execute([$current_draft_id, $_SESSION['user_id']]);
         $draft_row = $stmt_draft->fetch(PDO::FETCH_ASSOC);
         if ($draft_row) {
+            $loaded_draft_name = $draft_row['draft_name'] ?? '';
             if (str_starts_with($draft_row['canvas_json'], 'FILE:')) {
                 $filepath = UPLOADS_PATH . 'drafts/' . str_replace('FILE:', '', $draft_row['canvas_json']);
                 if (file_exists($filepath)) $loaded_draft_json = file_get_contents($filepath);
@@ -214,15 +218,24 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             <button class="btn-add-img" onclick="createNewImageField()">+ New Photo (Frames)</button>
             <button class="btn-add-table" onclick="createNewTableField()">+ New table</button>
             <div class="export-group" style="display: flex; gap: 5px; width: 100%;">
-                <select id="exportFormat" class="export-format" style="width: 25%;">
+                <select id="exportFormat" class="export-format" style="width: 20%;">
                     <option value="png">PNG</option>
                     <option value="jpg">JPG</option>
                     <option value="pdf">PDF</option>
                 </select>
+                <select id="exportQuality" class="form-control" style="width: 20%; padding: 10px; border-radius: 8px; font-weight: bold; background: #0f172a; color: white;">
+                    <option value="1">SD</option>
+                    <option value="2" selected>HD</option>
+                    <option value="3">UHD</option>
+                    <option value="5">4K</option>
+                </select>
                 <?php if(isset($_SESSION['user_id'])): ?>
-                <button class="btn-main" style="width: 35%; background: linear-gradient(135deg, #f59e0b, #d97706); font-size: 14px; border-radius: 10px;" onclick="saveDraft(this)"><i class="fas fa-save"></i> Draft</button>
+                <div style="display: flex; gap: 2px; width: 40%;">
+                    <button class="btn-main" style="flex: 1; background: #059669; font-size: 11px; border-radius: 10px 0 0 10px; padding: 10px 5px;" onclick="saveDraft(this, false)" title="Save changes to current draft"><i class="fas fa-save"></i> Save</button>
+                    <button class="btn-main" style="flex: 1; background: #f59e0b; font-size: 11px; border-radius: 0 10px 10px 0; padding: 10px 5px;" onclick="saveDraft(this, true)" title="Save as a new draft"><i class="fas fa-copy"></i> As New</button>
+                </div>
                 <?php endif; ?>
-                <button class="btn-main btn-export" style="width: 40%; font-size: 14px;" onclick="handleExport()">⬇ Download</button>
+                <button class="btn-main btn-export" style="width: 35%; font-size: 14px;" onclick="handleExport()">⬇ Download</button>
             </div>
         </div>
     </div>
@@ -296,70 +309,74 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         canvas.renderAll(); 
     }
 
-    // 🚀 DEDUCTION API CALL WITH REPORTING 🚀
+    // 🚀 UNIFIED EXPORT HANDLER 🚀
     async function handleExport() {
         if(!canvas) return;
-        
-        if (false && userRole !== 'admin') {
-            let confirmMsg = `${currency}${posterCost} will be deducted from your wallet to download the poster.\n\nDo you want to proceed?`;
-            if (!confirm(confirmMsg)) return; 
-            
-            try {
-                let formData = new FormData();
-                formData.append('service_type', 'Poster Design');
-
-                let response = await fetch(APP_URL + 'deduct_poster_balance.php', { 
-                    method: 'POST',
-                    body: formData
-                });
-                let text = await response.text(); 
-                
-                try {
-                    let result = JSON.parse(text);
-                    if (result.success) {
-                        exportPoster();
-                        alert(` ✅ Downloaded!\nYour new wallet balance: ${currency}${result.remaining_balance}`);
-                    } else {
-                        alert("❌ Error: " + result.message);
-                    }
-                } catch (jsonError) {
-                    console.error("Raw API Response:", text);
-                    alert("❌ Server Error: There is an error in PHP."); 
-                }
-            } catch (error) { 
-                console.error(error);
-                alert("❌ Server Error (Network)."); 
-            }
-        } else {
-            let formData = new FormData();
-            formData.append('service_type', 'Poster Design (Admin)');
-            fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
-            exportPoster(); 
-        }
+        // The Universal Paywall (service_paywall.php) intercepts this call.
+        // It will only execute the original logic (exportPoster) if unlocked.
+        exportPoster();
     }
 
     function exportPoster() {
         if(!canvas) return; canvas.discardActiveObject(); canvas.renderAll();
-        const format = document.getElementById('exportFormat').value; const fileName = 'Digital_Studio_Poster.' + format;
-        if (format === 'pdf') { const imgData = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier: 2 }); const { jsPDF } = window.jspdf; const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [800, 1000] }); pdf.addImage(imgData, 'JPEG', 0, 0, 800, 1000); pdf.save(fileName); } 
-        else { const dataURL = canvas.toDataURL({ format: format === 'jpg' ? 'jpeg' : 'png', quality: 1, multiplier: 2 }); const link = document.createElement('a'); link.download = fileName; link.href = dataURL; link.click(); }
+        const format = document.getElementById('exportFormat').value; 
+        const multiplier = parseInt(document.getElementById('exportQuality').value) || 2;
+        const fileName = 'Digital_Studio_Poster_' + (multiplier > 1 ? (multiplier + 'x') : 'SD');
+        
+        if (format === 'pdf') { 
+            const imgData = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier: multiplier }); 
+            const { jsPDF } = window.jspdf; 
+            const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [800, 1000] }); 
+            pdf.addImage(imgData, 'JPEG', 0, 0, 800, 1000); 
+            pdf.save(fileName + '.pdf'); 
+        } 
+        else { 
+            const dataURL = canvas.toDataURL({ format: format === 'jpg' ? 'jpeg' : 'png', quality: 1, multiplier: multiplier }); 
+            const link = document.createElement('a'); 
+            link.download = fileName + '.' + format; 
+            link.href = dataURL; 
+            link.click(); 
+        }
     }
     const userRole = "<?php echo ($_SESSION['user_role'] ?? 'guest'); ?>";
     const posterCost = <?php echo number_format($poster_cost ?? 0, 2, '.', ''); ?>;
     const currency = "<?php echo (string)($currency ?? '₹'); ?>";
     let canvas = null; let fieldCounter = 0; let watermarkObj = null; let wmImageSource = null; let globalCustomImages = {};
+    let currentDraftId = <?= $current_draft_id ?>;
+    let currentDraftName = "<?= addslashes($loaded_draft_name) ?>";
 
-    function saveDraft(btn) {
+    function saveDraft(btn, isSaveAs = false) {
         if (!canvas) return;
+        
+        let draftName = currentDraftName;
+        if (isSaveAs || !currentDraftId || !draftName) {
+            draftName = prompt("Enter a name for this draft:", draftName || "My Design");
+            if (!draftName) return; 
+        }
+
         const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
         btn.disabled = true;
 
-        const json = JSON.stringify(canvas.toJSON(['customId', 'customBgEnable', 'customBgColor', 'customBgShape', 'customPadding', 'fontSize', 'fontFamily', 'fill', 'opacity', 'fontWeight', 'fontStyle', 'textAlign', 'stroke', 'strokeWidth']));
+        // Expanded property list for complete serialization
+        const propsToInclude = [
+            'customId', 'customBgEnable', 'customBgColor', 'customBgShape', 'customPadding', 
+            'fontSize', 'fontFamily', 'fill', 'opacity', 'fontWeight', 'fontStyle', 'textAlign', 
+            'stroke', 'strokeWidth', 'selectable', 'evented', 'visible', 'angle', 
+            'scaleX', 'scaleY', 'left', 'top', 'width', 'height', 'originX', 'originY',
+            'strokeLineCap', 'strokeLineJoin', 'strokeMiterLimit', 'strokeDashArray', 'strokeDashOffset'
+        ];
+
+        const json = JSON.stringify(canvas.toJSON(propsToInclude));
         const formData = new FormData();
         formData.append('service_slug', 'poster_studio');
         formData.append('service_name', 'Poster Studio Pro');
+        formData.append('draft_name', draftName);
         formData.append('json', json);
+        
+        if (!isSaveAs && currentDraftId > 0) {
+            formData.append('draft_id', currentDraftId);
+        }
 
         fetch(APP_URL + 'save_digital_draft.php', {
             method: 'POST',
@@ -368,7 +385,9 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('✅ Draft saved successfully! You can find it in "Saved Drafts" in the sidebar.');
+                currentDraftId = data.draft_id;
+                currentDraftName = draftName;
+                alert('✅ Draft saved successfully!');
             } else {
                 alert('❌ Error: ' + (data.error || 'Unknown error'));
             }

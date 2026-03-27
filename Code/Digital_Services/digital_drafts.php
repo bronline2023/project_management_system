@@ -1,54 +1,39 @@
 <?php
 /**
  * views/digital_drafts.php
- * View user saved drafts for Digital Services.
+ * List saved digital service drafts for the logged-in user.
  */
 
 if (!isset($_SESSION['user_id'])) {
-    echo "<div class='alert alert-danger text-center mt-4 fw-bold'>Please login to view your saved drafts.</div>";
+    echo "<div class='container mt-5 text-center'><h3>Please login to view your drafts.</h3></div>";
     return;
 }
 
 $pdo = connectDB();
 $userId = $_SESSION['user_id'];
 
-if (isset($_POST['delete_draft_id'])) {
-    $draftId = (int)$_POST['delete_draft_id'];
-    try {
-        // Fetch to see if it's a file
-        $s = $pdo->prepare("SELECT canvas_json FROM digital_service_history WHERE id = ? AND user_id = ?");
-        $s->execute([$draftId, $userId]);
-        $row = $s->fetch(PDO::FETCH_ASSOC);
-        if ($row && str_starts_with($row['canvas_json'], 'FILE:')) {
-            $filename = str_replace('FILE:', '', $row['canvas_json']);
-            $filepath = UPLOADS_PATH . 'drafts/' . $filename;
-            if (file_exists($filepath)) unlink($filepath);
-        }
-        $dStmt = $pdo->prepare("DELETE FROM digital_service_history WHERE id = ? AND user_id = ?");
-        $dStmt->execute([$draftId, $userId]);
-        $_SESSION['flash_msg'] = "Draft deleted successfully.";
-        header("Location: ?page=digital_drafts");
-        exit;
-    } catch(Exception $e) {}
-}
-
 try {
-    $stmt = $pdo->prepare("SELECT id, service_name, service_slug, created_at FROM digital_service_history WHERE user_id = ? AND is_draft = 1 ORDER BY created_at DESC");
+    $stmt = $pdo->prepare("SELECT id, service_name, service_slug, draft_name, created_at FROM digital_service_history WHERE user_id = ? AND is_draft = 1 ORDER BY created_at DESC");
     $stmt->execute([$userId]);
     $drafts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
+    echo "<div class='alert alert-danger'>Error: " . $e->getMessage() . "</div>";
     $drafts = [];
 }
 ?>
 
 <div class="container-fluid py-4">
-    <?php if(isset($_SESSION['flash_msg'])): ?>
-        <div class="alert alert-success fw-bold"><i class="fas fa-check-circle"></i> <?= $_SESSION['flash_msg'] ?></div>
-        <?php unset($_SESSION['flash_msg']); ?>
+    <?php if(isset($_SESSION['status_message'])): ?>
+        <?= $_SESSION['status_message'] ?>
+        <?php unset($_SESSION['status_message']); ?>
     <?php endif; ?>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="fw-bold text-dark"><i class="fas fa-save text-primary"></i> My Saved Drafts</h3>
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <h3 class="fw-bold text-dark m-0"><i class="fas fa-save text-primary"></i> My Saved Drafts</h3>
+        <div class="search-box" style="flex: 1; max-width: 400px; position: relative;">
+            <i class="fas fa-search" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #94a3b8;"></i>
+            <input type="text" id="draftSearch" class="form-control" placeholder="Search by name or service..." style="padding-left: 40px; border-radius: 50px; border: 2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        </div>
         <a href="<?= BASE_URL ?>?page=dashboard" class="btn btn-outline-secondary btn-sm rounded-pill fw-bold"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
     </div>
 
@@ -60,11 +45,14 @@ try {
                 <p class="text-secondary small">Start designing in the Digital Studio and click "Save Draft" to see them here.</p>
             </div>
         <?php else: ?>
-            <?php foreach ($drafts as $draft): ?>
-                <div class="col-md-4 mb-4">
+            <?php foreach ($drafts as $draft): 
+                $dName = !empty($draft['draft_name']) ? $draft['draft_name'] : $draft['service_name'];
+                $searchData = $dName . ' ' . $draft['service_name'] . ' ' . $draft['service_slug'];
+            ?>
+                <div class="col-md-4 mb-4 draft-item" data-search="<?= htmlspecialchars($searchData) ?>">
                     <div class="card shadow-sm border-0 h-100" style="border-radius: 12px; overflow: hidden;">
                         <div class="card-header border-0 py-3" style="background: linear-gradient(135deg, #1e293b, #0f172a);">
-                            <h5 class="mb-0 fw-bold text-white"><i class="fas fa-paint-brush me-2 text-info"></i> <?= htmlspecialchars($draft['service_name']) ?></h5>
+                            <h5 class="mb-0 fw-bold text-white"><i class="fas fa-paint-brush me-2 text-info"></i> <?= htmlspecialchars(!empty($draft['draft_name']) ? $draft['draft_name'] : $draft['service_name']) ?></h5>
                         </div>
                         <div class="card-body bg-light">
                             <p class="text-muted small fw-bold mb-1"><i class="far fa-calendar-alt"></i> Saved On:</p>
@@ -73,8 +61,10 @@ try {
                             <div class="d-flex gap-2">
                                 <a href="?page=<?= $draft['service_slug'] ?>&draft_id=<?= $draft['id'] ?>" class="btn btn-success flex-grow-1 fw-bold"><i class="fas fa-external-link-alt"></i> Open</a>
                                 <form method="POST" onsubmit="return confirm('Are you sure you want to delete this draft?');">
-                                    <input type="hidden" name="delete_draft_id" value="<?= $draft['id'] ?>">
-                                    <button type="submit" class="btn btn-outline-danger fw-bold px-3"><i class="fas fa-trash"></i></button>
+                                    <input type="hidden" name="action" value="delete_digital_draft">
+                                    <input type="hidden" name="id" value="<?= $draft['id'] ?>">
+                                    <input type="hidden" name="page" value="digital_drafts">
+                                    <button type="submit" class="btn btn-outline-danger fw-bold px-3" title="Delete Draft"><i class="fas fa-trash"></i></button>
                                 </form>
                             </div>
                         </div>
@@ -84,3 +74,18 @@ try {
         <?php endif; ?>
     </div>
 </div>
+
+<script>
+document.getElementById('draftSearch').addEventListener('input', function(e) {
+    const term = e.target.value.toLowerCase().trim();
+    const cards = document.querySelectorAll('.draft-item');
+    cards.forEach(card => {
+        const text = card.getAttribute('data-search').toLowerCase();
+        if (text.includes(term)) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+});
+</script>

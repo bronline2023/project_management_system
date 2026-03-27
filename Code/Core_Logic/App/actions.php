@@ -1080,6 +1080,26 @@ try {
             $pageRedirect = 'clients';
             break;
 
+        case 'delete_digital_draft':
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id > 0) {
+                // Fetch to check file and ownership
+                $stmt = $pdo->prepare("SELECT canvas_json FROM digital_service_history WHERE id = ? AND user_id = ?");
+                $stmt->execute([$id, $currentUserId]);
+                $draft = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($draft) {
+                    if (str_starts_with($draft['canvas_json'], 'FILE:')) {
+                        $filename = str_replace('FILE:', '', $draft['canvas_json']);
+                        $filepath = UPLOADS_PATH . 'drafts/' . $filename;
+                        if (file_exists($filepath)) @unlink($filepath);
+                    }
+                    $pdo->prepare("DELETE FROM digital_service_history WHERE id = ? AND user_id = ?")->execute([$id, $currentUserId]);
+                    $_SESSION['status_message'] = '<div class="alert alert-success fw-bold"><i class="fas fa-check-circle"></i> Draft deleted successfully!</div>';
+                }
+            }
+            $pageRedirect = 'digital_drafts';
+            break;
+
         default:
             $_SESSION['status_message'] = '<div class="alert alert-warning">Unknown Action: ' . htmlspecialchars($action) . '</div>';
             break;
