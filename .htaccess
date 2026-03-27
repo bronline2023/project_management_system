@@ -4,6 +4,7 @@
 # making URLs cleaner (e.g., http://localhost/project_management_system/home instead of index.php?page=home).
 #
 # Place this file in the root directory of your project (same level as index.php).
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 

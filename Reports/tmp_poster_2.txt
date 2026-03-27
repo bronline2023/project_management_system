@@ -1,0 +1,379 @@
+        let objTitle = canvas.getObjects().find(obj => obj.customId === fieldId + '_title'); let objContent = canvas.getObjects().find(obj => obj.customId === fieldId + '_content');
+        if (isHidden) { if(objTitle) objTitle.set({visible: false}); if(objContent) objContent.set({visible: false}); canvas.discardActiveObject(); canvas.renderAll(); return; }
+
+        if (showTitle && titleVal !== "") {
+            const titleStyles = { text: titleVal, fontFamily: fontVal, fontSize: sizeVal * 0.8, fill: titleTextColor, fontWeight: 'bold', fontStyle: isItalic ? 'italic' : 'normal', customBgEnable: true, customBgColor: titleBgColor, customBgShape: 'pill', customPadding: padding * 0.8, backgroundColor: '', visible: true, textAlign: 'center', opacity: layerOpacity };
+            if (objTitle) { objTitle.set(titleStyles); objTitle.set('dirty', true); if(fitText) objTitle.set({ width: objTitle.calcTextWidth() + 2 }); else objTitle.set({ width: 600 }); } 
+            else { let initTop = objContent ? objContent.top - 60 : 100 + (canvas.getObjects().length * 10); const newTitle = new fabric.Textbox(titleVal, { customId: fieldId + '_title', left: 100, top: initTop, cornerColor: '#e11d48', transparentCorners: false, ...titleStyles }); if(fitText) newTitle.set({ width: newTitle.calcTextWidth() + 2 }); else newTitle.set({ width: 600 }); canvas.add(newTitle); }
+        } else { if(objTitle) canvas.remove(objTitle); }
+
+        if (textVal !== "") {
+            const contentStyles = { text: textVal, fontFamily: fontVal, fontSize: sizeVal, fill: colorVal, fontWeight: isBold ? 'bold' : 'normal', fontStyle: isItalic ? 'italic' : 'normal', stroke: strokeW > 0 ? strokeColor : null, strokeWidth: strokeW, customBgEnable: boxBgEnable, customBgColor: boxBgColor, customBgShape: boxBgShape, customPadding: padding, backgroundColor: '', visible: true, textAlign: 'center', opacity: layerOpacity };
+            if (objContent) { objContent.set(contentStyles); objContent.set('dirty', true); if(fitText) objContent.set({ width: objContent.calcTextWidth() + 2 }); else objContent.set({ width: 600 }); } 
+            else { let initTop = objTitle ? objTitle.top + objTitle.height + 30 : 150 + (canvas.getObjects().length * 15); const newContent = new fabric.Textbox(textVal, { customId: fieldId + '_content', left: 100, top: initTop, cornerColor: '#3b82f6', transparentCorners: false, ...contentStyles }); if(fitText) newContent.set({ width: newContent.calcTextWidth() + 2 }); else newContent.set({ width: 600 }); canvas.add(newContent); }
+        } else { if(objContent) canvas.remove(objContent); }
+        canvas.renderAll(); 
+    }
+
+    function addBullets(fieldId, style) {
+        if(style === 'none') return; const el = document.getElementById('text_' + fieldId); if(!el) return;
+        let lines = el.value.split('\n'); let counter = 1; 
+        for(let i=0; i<lines.length; i++) {
+            lines[i] = lines[i].replace(/^([•➔★✔]|\d+\.)\s*/, ''); 
+            if(lines[i].trim() !== '') {
+                if(style === 'bullet') lines[i] = '• ' + lines[i]; else if(style === 'number') { lines[i] = counter + '. ' + lines[i]; counter++; }
+                else if(style === 'arrow') lines[i] = '➔ ' + lines[i]; else if(style === 'star') lines[i] = '★ ' + lines[i]; else if(style === 'check') lines[i] = '✔ ' + lines[i];
+            }
+        }
+        el.value = lines.join('\n'); document.querySelector('#card_' + fieldId + ' .bullet-style').value = 'none'; syncTextToCanvas(fieldId);
+    }
+
+    function createNewTableField() {
+        fieldCounter++; const fieldId = 'field_tbl_' + fieldCounter;
+        const fieldHTML = `
+            <div class="field-card" id="card_${fieldId}" style="border-color: #ea580c;">
+                <div class="title-row" style="background: #fff7ed; border-color: #fed7aa;">
+                    <span style="font-weight: bold; color: #c2410c;">📊 Custom Table (Grid)</span>
+                    <label style="font-size:12px; color:orange; font-weight:bold;"><input type="checkbox" class="field-hide-all" onchange="toggleVisibility('${fieldId}')"> 👁️ Hide</label>
+                </div>
+                <div class="tools-row" style="background: #fff7ed; margin-bottom: 5px;">
+                    <div class="tool-group">Rows<input type="number" class="tbl-rows" value="3" min="1" max="10" onchange="buildTableGridUI('${fieldId}')" style="width:45px;"></div>
+                    <div class="tool-group">Cols<input type="number" class="tbl-cols" value="2" min="1" max="5" onchange="buildTableGridUI('${fieldId}')" style="width:45px;"></div>
+                    <div class="tool-group">Font<select class="field-font" onchange="syncTableToCanvas('${fieldId}')" style="width:100px;">${fontLibraryHTML}</select></div>
+                    <div class="tool-group">Size<input type="number" class="field-size" value="22" oninput="syncTableToCanvas('${fieldId}')" style="width:45px;"></div>
+                    <div style="display:flex; gap: 5px; align-items:center; margin-top:10px;"><label style="font-size:12px; font-weight:bold;"><input type="checkbox" class="field-bold" onchange="syncTableToCanvas('${fieldId}')"> B</label><label style="font-size:12px; font-weight:bold;"><input type="checkbox" class="field-italic" onchange="syncTableToCanvas('${fieldId}')"> I</label></div>
+                </div>
+                <div class="tbl-grid-container" id="grid_container_${fieldId}"></div>
+                <div class="tools-row" style="background: #fff7ed; margin-top: 5px;">
+                    <div class="tool-group">Header Bg<input type="color" class="tbl-header-bg" value="#ea580c" oninput="syncTableToCanvas('${fieldId}')"></div>
+                    <div class="tool-group">Cell Bg<input type="color" class="tbl-cell-bg" value="#ffffff" oninput="syncTableToCanvas('${fieldId}')"></div>
+                    <div class="tool-group">Text Color<input type="color" class="field-color" value="#000000" oninput="syncTableToCanvas('${fieldId}')"></div>
+                    <div class="tool-group">Opac% <input type="number" class="tbl-opacity" value="100" min="0" max="100" oninput="syncTableToCanvas('${fieldId}')" style="width:45px;"></div>
+                </div>
+                <div class="action-bar"><button class="btn-layer" onclick="moveLayer('${fieldId}', 'up')">⬆️ Bring Forward</button><button class="btn-delete" onclick="deleteField('${fieldId}')">🗑️ Delete</button></div>
+            </div>`;
+        document.getElementById('dynamicFields').insertAdjacentHTML('beforeend', fieldHTML); buildTableGridUI(fieldId); 
+    }
+
+    function buildTableGridUI(fieldId) {
+        const card = document.getElementById('card_' + fieldId); const container = document.getElementById('grid_container_' + fieldId);
+        let rows = parseInt(card.querySelector('.tbl-rows').value) || 3; let cols = parseInt(card.querySelector('.tbl-cols').value) || 2;
+        let defaultData = [ ["Post Name", "Places"], ["Assistant", "10"] ];
+        let html = '';
+        for(let r=0; r<rows; r++) {
+            html += `<div class="tbl-row-ui">`;
+            for(let c=0; c<cols; c++) {
+                let isHeader = (r === 0); let val = (defaultData[r] && defaultData[r][c]) ? defaultData[r][c] : "";
+                html += `<input type="text" class="tbl-cell-ui ${isHeader ? 'header-cell' : ''}" id="tbl_${fieldId}_${r}_${c}" value="${val}" oninput="syncTableToCanvas('${fieldId}')" onkeyup="handleTyping(event, '${fieldId}', true)">`;
+            }
+            html += `</div>`;
+        }
+        container.innerHTML = html; setTimeout(() => syncTableToCanvas(fieldId), 50);
+    }
+
+    function syncTableToCanvas(fieldId) {
+        if(!canvas) return; const card = document.getElementById('card_' + fieldId); if(!card) return;
+        const isHidden = card.querySelector('.field-hide-all').checked;
+        let existingObj = canvas.getObjects().find(obj => obj.customId === fieldId);
+        if (isHidden) { if(existingObj) { existingObj.set({visible: false}); canvas.discardActiveObject(); canvas.renderAll(); } return; }
+
+        let rows = parseInt(card.querySelector('.tbl-rows').value) || 1; let cols = parseInt(card.querySelector('.tbl-cols').value) || 1;
+        let fontSize = parseInt(card.querySelector('.field-size').value) || 20; let fontFam = card.querySelector('.field-font').value;
+        let textColor = card.querySelector('.field-color').value; let headerBg = card.querySelector('.tbl-header-bg').value; let cellBg = card.querySelector('.tbl-cell-bg').value;
+        let isBold = card.querySelector('.field-bold').checked; let isItalic = card.querySelector('.field-italic').checked;
+        let layerOpacity = (parseInt(card.querySelector('.tbl-opacity').value) || 100) / 100;
+
+        let padding = 15; let cellWidths = new Array(cols).fill(0); let cellHeights = new Array(rows).fill(0); let textObjects = [];
+
+        for(let r=0; r<rows; r++) {
+            textObjects[r] = [];
+            for(let c=0; c<cols; c++) {
+                let input = document.getElementById(`tbl_${fieldId}_${r}_${c}`); let val = input ? input.value : ""; let isHeader = (r === 0);
+                let textConfig = { fontFamily: fontFam, fontSize: fontSize, fill: (isHeader ? '#ffffff' : textColor), fontWeight: (isHeader || isBold) ? 'bold' : 'normal', fontStyle: isItalic ? 'italic' : 'normal' };
+                let t = new fabric.Text(val, textConfig); textObjects[r][c] = t;
+                let reqW = t.width + (padding * 2); let reqH = t.height + (padding * 2);
+                if(reqW > cellWidths[c]) cellWidths[c] = reqW; if(reqH > cellHeights[r]) cellHeights[r] = reqH;
+            }
+        }
+
+        let groupElements = []; let currentY = 0;
+        for(let r=0; r<rows; r++) {
+            let currentX = 0;
+            for(let c=0; c<cols; c++) {
+                let isHeader = (r === 0);
+                let rect = new fabric.Rect({ left: currentX, top: currentY, width: cellWidths[c], height: cellHeights[r], fill: isHeader ? headerBg : cellBg, stroke: '#000000', strokeWidth: 1 });
+                groupElements.push(rect);
+                let t = textObjects[r][c]; t.set({ left: currentX + (cellWidths[c]/2) - (t.width/2), top: currentY + (cellHeights[r]/2) - (t.height/2) });
+                groupElements.push(t); currentX += cellWidths[c];
+            }
+            currentY += cellHeights[r];
+        }
+
+        let left = 100, top = 350; if(existingObj) { left = existingObj.left; top = existingObj.top; canvas.remove(existingObj); }
+        let tableGroup = new fabric.Group(groupElements, { left: left, top: top, customId: fieldId, cornerColor: '#ea580c', transparentCorners: false, visible: true, opacity: layerOpacity });
+        canvas.add(tableGroup); if(existingObj && canvas.getActiveObject() === existingObj) canvas.setActiveObject(tableGroup); canvas.renderAll();
+    }
+
+    function createNewImageField() {
+        fieldCounter++; const fieldId = 'field_img_' + fieldCounter;
+        const fieldHTML = `
+            <div class="field-card" id="card_${fieldId}" style="border-color: #9333ea;">
+                <div class="title-row" style="background: #faf5ff;">
+                    <span style="font-weight: bold; color: #7e22ce;">Custom Image Frame</span>
+                    <label style="font-size:12px; color:orange;"><input type="checkbox" class="field-hide-all" onchange="toggleVisibility('${fieldId}')"> Hide</label>
+                </div>
+                <input type="file" accept="image/*" onchange="handleCustomImageUpload(event, '${fieldId}')" style="width:100%; margin-bottom:10px; padding:5px; border:1px solid #ccc; border-radius:4px;">
+                <button type="button" onclick="removeBgFromImageField('${fieldId}')" style="background: linear-gradient(135deg, #ec4899, #8b5cf6); color:white; border:none; border-radius:4px; padding:8px; font-weight:bold; width:100%; margin-bottom:10px; cursor:pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><i class="fas fa-magic"></i> AI Remove Background (Free)</button>
+                
+                <div class="tools-row" style="background: #fdf4ff; border-color: #e9d5ff; margin-bottom: 5px;">
+                    <div style="width:100%; display:flex; gap:10px; align-items:center;">
+                        <span style="font-size:12px; font-weight:bold; color:#a855f7;">Frame Fit:</span>
+                        <label style="font-size:11px;">Zoom <input type="range" class="img-zoom" min="0.2" max="3" step="0.1" value="1" oninput="updateImageInsideShape('${fieldId}')" style="width:50px;"></label>
+                        <label style="font-size:11px;">X <input type="range" class="img-x" min="-200" max="200" value="0" oninput="updateImageInsideShape('${fieldId}')" style="width:50px;"></label>
+                        <label style="font-size:11px;">Y <input type="range" class="img-y" min="-200" max="200" value="0" oninput="updateImageInsideShape('${fieldId}')" style="width:50px;"></label>
+                    </div>
+                </div>
+
+                <div class="tools-row" style="background: #faf5ff;">
+                    <div class="tool-group">Shape
+                        <select class="img-shape-select" onchange="renderShapeWithImage('${fieldId}')" style="width: 80px;">
+                            <option value="square">Square</option>
+                            <option value="circle">Circle</option>
+                            <option value="triangle">Triangle</option>
+                            <option value="hexagon">Hexagon</option>
+                            <option value="diamond">Diamond</option>
+                            <option value="star">Star</option>
+                        </select>
+                    </div>
+                    <div class="tool-group">Fit Mode
+                        <select class="img-fit-select" onchange="renderShapeWithImage('${fieldId}')" style="width: 80px; color:#d97706;">
+                            <option value="crop">Crop</option>
+                            <option value="fit">Fit</option>
+                        </select>
+                    </div>
+                    <div class="tool-group">Border<input type="color" class="img-border-color" value="#ffffff" oninput="syncImageStyle('${fieldId}')"></div>
+                    <div class="tool-group">Thick<input type="number" class="img-border-width" value="0" min="0" oninput="syncImageStyle('${fieldId}')"></div>
+                    <div class="tool-group">Opac%<input type="number" class="img-opacity" value="100" min="0" max="100" oninput="syncImageStyle('${fieldId}')" style="width:45px;"></div>
+                </div>
+                <div class="action-bar"><button class="btn-layer" onclick="moveLayer('${fieldId}', 'up')">⬆️ Bring Forward</button><button class="btn-layer" onclick="moveLayer('${fieldId}', 'down')">⬇️ Send Back</button><button class="btn-delete" onclick="deleteField('${fieldId}')">🗑️ Delete</button></div>
+            </div>`;
+        document.getElementById('dynamicFields').insertAdjacentHTML('beforeend', fieldHTML);
+    }
+    
+    function handleCustomImageUpload(event, fieldId) { 
+        const file = event.target.files[0]; if(!file || !canvas) return; 
+        const reader = new FileReader(); 
+        reader.onload = function(f) { 
+            let imgEl = new Image();
+            imgEl.onload = function() {
+                globalCustomImages[fieldId] = imgEl;
+                renderShapeWithImage(fieldId); 
+            };
+            imgEl.src = f.target.result;
+        }; 
+        reader.readAsDataURL(file); 
+    }
+
+    async function removeBgFromImageField(fieldId) {
+        if(!canvas) return; 
+        let imgEl = globalCustomImages[fieldId];
+        if(!imgEl) { alert("Please upload an image into the frame first."); return; }
+        
+        let loader = document.createElement('div');
+        loader.id = 'aiLoader_' + fieldId;
+        loader.innerHTML = `<div style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.95); color:white; z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:bold; font-size:16px;">
+            <div style="border:6px solid #f3f3f3; border-top:6px solid #ec4899; border-radius:50%; width:50px; height:50px; animation:spin 1s linear infinite; margin-bottom:15px;"></div>
+            Wait while AI automagically removes the background...<br><span style="color:#10b981; font-weight:normal; font-size:12px; margin-top:5px;">Runs 100% locally in your browser.</span>
+            </div>`;
+        document.body.appendChild(loader);
+
+        try {
+            let tempC = document.createElement('canvas'); tempC.width = imgEl.width; tempC.height = imgEl.height;
+            let tempCtx = tempC.getContext('2d'); tempCtx.drawImage(imgEl, 0, 0);
+            
+            tempC.toBlob(async function(blob) {
+                try {
+                    const resultBlob = await imglyRemoveBackground(blob);
+                    const transparentImageUrl = URL.createObjectURL(resultBlob);
+                    
+                    let newImgEl = new Image();
+                    newImgEl.onload = function() {
+                        globalCustomImages[fieldId] = newImgEl;
+                        renderShapeWithImage(fieldId); 
+                        loader.remove();
+                    };
+                    newImgEl.src = transparentImageUrl;
+                } catch(e) {
+                    alert("❌ AI processing failed. Browser may not support WebAssembly. " + e.message);
+                    loader.remove();
+                }
+            }, 'image/png');
+        } catch(e) { loader.remove(); }
+    }
+
+    function renderShapeWithImage(fieldId) {
+        if(!canvas) return; const card = document.getElementById('card_' + fieldId);
+        let existingObj = canvas.getObjects().find(obj => obj.customId === fieldId);
+        let imgEl = globalCustomImages[fieldId];
+        if(!imgEl && !existingObj) return;
+
+        const shapeType = card.querySelector('.img-shape-select').value;
+        const fitMode = card.querySelector('.img-fit-select').value;
+        const zoom = parseFloat(card.querySelector('.img-zoom').value) || 1;
+        const moveX = parseInt(card.querySelector('.img-x').value) || 0;
+        const moveY = parseInt(card.querySelector('.img-y').value) || 0;
+
+        let pattern = null;
+        let dim = existingObj ? Math.max(existingObj.width, existingObj.height) : 200;
+
+        if (imgEl) {
+            let scaleFit = fitMode === 'fit' ? (dim / Math.max(imgEl.width, imgEl.height)) : (dim / Math.min(imgEl.width, imgEl.height));
+            let finalScale = scaleFit * zoom;
+            pattern = new fabric.Pattern({ source: imgEl, repeat: 'no-repeat' });
+            let offsetX = (dim - (imgEl.width * finalScale))/2 + moveX;
+            let offsetY = (dim - (imgEl.height * finalScale))/2 + moveY;
+            pattern.patternTransform = [finalScale, 0, 0, finalScale, offsetX, offsetY];
+        }
+
+        let left = 300, top = 200, scaleX = 1, scaleY = 1, angle = 0;
+        if(existingObj) { left = existingObj.left; top = existingObj.top; scaleX = existingObj.scaleX; scaleY = existingObj.scaleY; angle = existingObj.angle; canvas.remove(existingObj); }
+
+        let newObj;
+        let common = { customId: fieldId, left, top, scaleX, scaleY, angle, fill: pattern || (existingObj?existingObj.fill:''), cornerColor: '#9333ea', transparentCorners: false };
+        
+        if (shapeType === 'circle') newObj = new fabric.Circle({ radius: dim/2, originX: 'center', originY: 'center', ...common });
+        else if (shapeType === 'square') newObj = new fabric.Rect({ width: dim, height: dim, originX: 'center', originY: 'center', ...common });
+        else if (shapeType === 'triangle') newObj = new fabric.Triangle({ width: dim, height: dim, originX: 'center', originY: 'center', ...common });
+        else if (shapeType === 'hexagon') newObj = new fabric.Polygon([{x: dim/2, y: 0}, {x: dim, y: dim*0.25}, {x: dim, y: dim*0.75}, {x: dim/2, y: dim}, {x: 0, y: dim*0.75}, {x: 0, y: dim*0.25}], {originX: 'center', originY: 'center', ...common});
+        else if (shapeType === 'diamond') newObj = new fabric.Polygon([{x: dim/2, y: 0}, {x: dim, y: dim/2}, {x: dim/2, y: dim}, {x: 0, y: dim/2}], {originX: 'center', originY: 'center', ...common});
+        else if (shapeType === 'star') newObj = new fabric.Polygon([{x: dim*0.5, y: 0}, {x: dim*0.61, y: dim*0.35}, {x: dim, y: dim*0.35}, {x: dim*0.68, y: dim*0.57}, {x: dim*0.79, y: dim}, {x: dim*0.5, y: dim*0.7}, {x: dim*0.21, y: dim}, {x: dim*0.32, y: dim*0.57}, {x: 0, y: dim*0.35}, {x: dim*0.39, y: dim*0.35}], {originX: 'center', originY: 'center', ...common});
+        else newObj = new fabric.Rect({ width: dim, height: dim, originX: 'center', originY: 'center', ...common }); 
+
+        const bColor = card.querySelector('.img-border-color').value; const bWidth = parseInt(card.querySelector('.img-border-width').value) || 0;
+        const imgOpacity = (parseInt(card.querySelector('.img-opacity').value) || 100) / 100;
+        
+        newObj.set({ stroke: bColor, strokeWidth: bWidth, opacity: imgOpacity });
+        canvas.add(newObj); canvas.setActiveObject(newObj); canvas.renderAll();
+    }
+
+    function updateImageInsideShape(fieldId) {
+        if(!canvas) return; const card = document.getElementById('card_' + fieldId);
+        let existingObj = canvas.getObjects().find(obj => obj.customId === fieldId);
+        let imgEl = globalCustomImages[fieldId];
+        if(!existingObj || !imgEl || !card) return;
+
+        const fitMode = card.querySelector('.img-fit-select').value;
+        const zoom = parseFloat(card.querySelector('.img-zoom').value) || 1;
+        const moveX = parseInt(card.querySelector('.img-x').value) || 0;
+        const moveY = parseInt(card.querySelector('.img-y').value) || 0;
+
+        let dim = Math.max(existingObj.width, existingObj.height);
+        let scaleFit = fitMode === 'fit' ? (dim / Math.max(imgEl.width, imgEl.height)) : (dim / Math.min(imgEl.width, imgEl.height));
+        let finalScale = scaleFit * zoom;
+        let offsetX = (dim - (imgEl.width * finalScale))/2 + moveX;
+        let offsetY = (dim - (imgEl.height * finalScale))/2 + moveY;
+
+        existingObj.fill.patternTransform = [finalScale, 0, 0, finalScale, offsetX, offsetY];
+        existingObj.set('dirty', true); canvas.renderAll();
+    }
+
+    function syncImageStyle(fieldId) {
+        if(!canvas) return; const card = document.getElementById('card_' + fieldId);
+        let obj = canvas.getObjects().find(o => o.customId === fieldId); if(!obj || !card) return;
+        const bColor = card.querySelector('.img-border-color').value; const bWidth = parseInt(card.querySelector('.img-border-width').value) || 0;
+        const imgOpacity = (parseInt(card.querySelector('.img-opacity').value) || 100) / 100;
+        obj.set({ stroke: bColor, strokeWidth: bWidth, opacity: imgOpacity });
+        canvas.renderAll();
+    }
+
+    function deleteField(fieldId) { let tObj = canvas.getObjects().find(o => o.customId === fieldId + '_title'); let cObj = canvas.getObjects().find(o => o.customId === fieldId + '_content'); let iObj = canvas.getObjects().find(o => o.customId === fieldId); if(tObj) canvas.remove(tObj); if(cObj) canvas.remove(cObj); if(iObj) canvas.remove(iObj); let card = document.getElementById('card_' + fieldId); if (card) card.remove(); canvas.renderAll(); }
+    function toggleVisibility(fieldId) { const card = document.getElementById('card_' + fieldId); const isHidden = card.querySelector('.field-hide-all').checked; let tObj = canvas.getObjects().find(o => o.customId === fieldId + '_title'); let cObj = canvas.getObjects().find(o => o.customId === fieldId + '_content'); let iObj = canvas.getObjects().find(o => o.customId === fieldId); if(isHidden) { card.classList.add('hidden-field'); if(tObj) tObj.set({visible:false}); if(cObj) cObj.set({visible:false}); if(iObj) iObj.set({visible:false}); canvas.discardActiveObject(); } else { card.classList.remove('hidden-field'); if(tObj) tObj.set({visible:true}); if(cObj) cObj.set({visible:true}); if(iObj) iObj.set({visible:true}); if(fieldId.includes('tbl')) syncTableToCanvas(fieldId); } canvas.renderAll(); }
+    function moveLayer(fieldId, dir) { let tObj = canvas.getObjects().find(o => o.customId === fieldId + '_title'); let cObj = canvas.getObjects().find(o => o.customId === fieldId + '_content'); let iObj = canvas.getObjects().find(o => o.customId === fieldId); if(dir === 'up') { if(tObj) canvas.bringForward(tObj); if(cObj) canvas.bringForward(cObj); if(iObj) canvas.bringForward(iObj); } else { if(tObj) canvas.sendBackwards(tObj); if(cObj) canvas.sendBackwards(cObj); if(iObj) canvas.sendBackwards(iObj); } canvas.renderAll(); }
+    function forceSyncAll() { if(!canvas) { initApp(); return; } document.querySelectorAll('.field-card').forEach(card => { const id = card.id.replace('card_', ''); if(id.includes('txt')) syncTextToCanvas(id); if(id.includes('tbl')) syncTableToCanvas(id); }); syncWatermark(); canvas.renderAll(); }
+    
+    function syncWatermark() {
+        if(!canvas) return; if(watermarkObj) { canvas.remove(watermarkObj); watermarkObj = null; }
+        const text = document.getElementById('wmText').value.trim(); const isRepeat = document.getElementById('wmRepeat').checked;
+        const color = document.getElementById('wmColor').value; const opacity = (parseInt(document.getElementById('wmOpacity').value) || 15) / 100; const size = parseInt(document.getElementById('wmSize').value) || 60;
+        if(text !== "") {
+            if(isRepeat) { let pCanvas = new fabric.StaticCanvas(null, { width: size*4, height: size*4 }); let pText = new fabric.Text(text, { fontSize: size, fontFamily: 'Poppins', fill: color, originX: 'center', originY: 'center', left: (size*4)/2, top: (size*4)/2, angle: -30 }); pCanvas.add(pText); pCanvas.renderAll(); let pattern = new fabric.Pattern({ source: pCanvas.getElement(), repeat: 'repeat' }); watermarkObj = new fabric.Rect({ width: 800, height: 1000, left: 0, top: 0, fill: pattern, opacity: opacity, selectable: false, evented: false }); } 
+            else { watermarkObj = new fabric.Text(text, { fontSize: size, fontFamily: 'Poppins', fill: color, opacity: opacity, originX: 'center', originY: 'center', left: 400, top: 500, angle: -45, selectable: false, evented: false }); } canvas.add(watermarkObj); canvas.sendToBack(watermarkObj); canvas.renderAll();
+        }
+    }
+    function removeWatermark() { if(!canvas) return; if(watermarkObj) { canvas.remove(watermarkObj); watermarkObj = null; } document.getElementById('wmText').value = ""; canvas.renderAll(); }
+
+    // 🚀 DEDUCTION API CALL WITH REPORTING 🚀
+    async function handleExport() {
+        if(!canvas) return;
+        
+        if (false && userRole !== 'admin') {
+            let confirmMsg = `${currency}${posterCost} will be deducted from your wallet to download the poster.\n\nDo you want to proceed?`;
+            if (!confirm(confirmMsg)) return; 
+            
+            try {
+                let formData = new FormData();
+                formData.append('service_type', 'Poster Design');
+
+                let response = await fetch(baseUrl + 'app/deduct_poster_balance.php', { 
+                    method: 'POST',
+                    body: formData
+                });
+                let text = await response.text(); 
+                
+                try {
+                    let result = JSON.parse(text);
+                    if (result.success) {
+                        exportPoster();
+                        alert(` ✅ Downloaded!\nYour new wallet balance: ${currency}${result.remaining_balance}`);
+                    } else {
+                        alert("❌ Error: " + result.message);
+                    }
+                } catch (jsonError) {
+                    console.error("Raw API Response:", text);
+                    alert("❌ Server Error: There is an error in PHP."); 
+                }
+            } catch (error) { 
+                console.error(error);
+                alert("❌ Server Error (Network)."); 
+            }
+        } else {
+            let formData = new FormData();
+            formData.append('service_type', 'Poster Design (Admin)');
+            fetch(baseUrl + 'app/deduct_poster_balance.php', { method: 'POST', body: formData });
+            exportPoster(); 
+        }
+    }
+
+    function exportPoster() {
+        if(!canvas) return; canvas.discardActiveObject(); canvas.renderAll();
+        const format = document.getElementById('exportFormat').value; const fileName = 'Digital_Studio_Poster.' + format;
+        if (format === 'pdf') { const imgData = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier: 2 }); const { jsPDF } = window.jspdf; const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [800, 1000] }); pdf.addImage(imgData, 'JPEG', 0, 0, 800, 1000); pdf.save(fileName); } 
+        else { const dataURL = canvas.toDataURL({ format: format === 'jpg' ? 'jpeg' : 'png', quality: 1, multiplier: 2 }); const link = document.createElement('a'); link.download = fileName; link.href = dataURL; link.click(); }
+    }
+</script>
+<script>
+    let sysCurrentZoom = 1.0;
+    function sysChangeZoom(amount) {
+        sysCurrentZoom += amount;
+        if(sysCurrentZoom < 0.2) sysCurrentZoom = 0.2;
+        if(sysCurrentZoom > 3.0) sysCurrentZoom = 3.0;
+        sysApplyZoom();
+    }
+    function sysResetZoom() {
+        sysCurrentZoom = 1.0;
+        sysApplyZoom();
+    }
+    function sysApplyZoom() {
+        const targets = document.querySelectorAll('.canvas-container, canvas#posterCanvas');
+        targets.forEach(el => {
+            el.style.transform = `scale(${sysCurrentZoom})`;
+            el.style.transformOrigin = 'center left';
+            el.style.transition = 'transform 0.2s ease';
+            el.style.marginBottom = '50px'; 
+            el.style.position = 'relative';
+            el.style.zIndex = '1';
+        });
+    }
+</script>
+</body>
+</html>
