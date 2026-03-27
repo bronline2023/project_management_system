@@ -129,7 +129,8 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     /* ========================================================== */
     @media (max-width: 992px) {
         .studio-wrapper, .builder-wrapper { flex-direction: column !important; height: auto !important; width: 100vw !important; overflow-x: hidden; }
-        .studio-panel { width: 100% !important; min-width: 100% !important; height: auto !important; max-height: 55vh; overflow-y: auto; border-right: none !important; border-bottom: 2px solid #334155; border-radius: 0; box-shadow: none; background: #0f172a; }
+        .studio-panel { width: 100% !important; min-width: 100% !important; height: auto !important; max-height: 55vh; overflow-y: hidden; border-right: none !important; border-bottom: 2px solid #334155; border-radius: 0; box-shadow: none; background: #0f172a; }
+        .controls-area { overflow-y: auto; height: calc(55vh - 55px); max-height: calc(55vh - 55px); }
         .workspace { position: relative; width: 100% !important; height: 45vh !important; min-height: 45vh !important; padding: 10px !important; overflow-y: auto; }
         .canvas-container { max-width: 100% !important; height: auto !important; margin: 0 auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         canvas { max-width: 100% !important; height: auto !important; }
@@ -155,17 +156,59 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 <?php $page_title = 'Poster Studio Pro'; require_once INCLUDES_PATH.'digital_header.php'; ?>
 <div class="studio-wrapper" style="height: calc(100vh - 65px); min-height: calc(100vh - 65px);">
     <div class="studio-panel">
-        <div style="padding: 10px; text-align: right; background: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
+        <div style="padding: 10px; display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
+            <select id="typingLang" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #1e293b; background: white; outline: none; cursor: pointer;">
+                <option value="en">🇺🇸 English</option>
+                <option value="gu">🇮🇳 Gujarati</option>
+                <option value="hi">🇮🇳 Hindi</option>
+            </select>
             <button class="btn-refresh" style="background:#3b82f6;" onclick="forceSyncAll()">🔄 Refresh Canvas</button>
         </div>
-        
         <div class="controls-area" id="formContainer">
+            <h3 class="control-title"><i class="fas fa-image"></i> 1. Background Setup</h3>
+            <div class="control-box">
+                <label class="form-label">Background Type</label>
+                <select id="bgSelect" onchange="applyPresetBackground()" class="form-control" style="margin-bottom: 10px;">
+                    <option value="solid-white">Solid White</option>
+                    <option value="none">No Background</option>
+                    <option value="grad-navy">Navy Gradient</option>
+                    <option value="grad-crimson">Crimson Gradient</option>
+                    <option value="grad-forest">Forest Gradient</option>
+                    <option value="grad-gold">Gold Gradient</option>
+                </select>
+                <div class="bg-tool-row">
+                    <div class="tool-group" style="flex: 1;">Solid <input type="color" id="bgSolidColor" value="#ffffff" oninput="applySolidBg()"></div>
+                    <div class="tool-group" style="flex: 1;">Grad 1 <input type="color" id="gradCol1" value="#ff0000" oninput="applyCustomGradient()"></div>
+                    <div class="tool-group" style="flex: 1;">Grad 2 <input type="color" id="gradCol2" value="#0000ff" oninput="applyCustomGradient()"></div>
+                </div>
+                <label class="form-label" style="margin-top: 15px;">Upload Background Image</label>
+                <input type="file" id="bgImage" accept="image/*" class="form-control" style="margin-top: 5px;">
             </div>
 
-            <h3 style="font-size: 16px; margin: 15px 0 10px 0; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 5px;">4. Form Details (Text, Image and Table)</h3>
+            <h3 class="control-title"><i class="fas fa-stamp"></i> 2. Watermark & Logo Setup</h3>
+            <div class="control-box">
+                <label class="form-label">Text Watermark</label>
+                <input type="text" id="wmText" placeholder="e.g., Confidential, Draft" oninput="syncWatermark()" class="form-control">
+                
+                <label class="form-label" style="margin-top: 10px;">Image Watermark / Logo</label>
+                <input type="file" id="wmImageUpload" accept="image/*" class="form-control">
+                
+                <div class="bg-tool-row" style="margin-top: 10px;">
+                    <label style="font-size: 13px; font-weight: bold; color: #e2e8f0; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="wmRepeat" onchange="syncWatermark()" style="margin:0; width: 18px; height: 18px;"> Repeat Pattern
+                    </label>
+                </div>
+                <div class="bg-tool-row">
+                    <div class="tool-group" style="flex: 1;">Color <input type="color" id="wmColor" value="#cccccc" oninput="syncWatermark()"></div>
+                    <div class="tool-group" style="flex: 1;">Opac% <input type="number" id="wmOpacity" value="25" min="0" max="100" oninput="syncWatermark()" style="width: 100%;"></div>
+                    <div class="tool-group" style="flex: 1;">Size <input type="number" id="wmSize" value="60" min="10" max="200" oninput="syncWatermark()" style="width: 100%;"></div>
+                </div>
+                <button class="btn-action btn-danger-lite" style="width: 100%; margin-top: 15px; padding: 10px;" onclick="removeWatermark()"><i class="fas fa-trash-alt"></i> Remove Watermark/Logo</button>
+            </div>
+
+            <h3 class="control-title"><i class="fas fa-list-alt"></i> 3. Form Details (Text, Image and Table)</h3>
             <div id="dynamicFields"></div>
         </div>
-
         <div class="action-btns">
             <button class="btn-add-text" onclick="createNewTextField()">+ New text</button>
             <button class="btn-add-img" onclick="createNewImageField()">+ New Photo (Frames)</button>
@@ -523,9 +566,9 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         }
     }
 
-    function applySolidBg() { if(!canvas) return; canvas.backgroundImage = null; canvas.backgroundColor = document.getElementById('bgSolidColor').value; canvas.renderAll(); document.getElementById('bgSelect').value = 'solid-white'; }
-    function applyCustomGradient() { if(!canvas) return; const grad = new fabric.Gradient({ type: 'linear', gradientUnits: 'pixels', coords: { x1: 0, y1: 0, x2: 0, y2: 1000 }, colorStops: [{ offset: 0, color: document.getElementById('gradCol1').value }, { offset: 1, color: document.getElementById('gradCol2').value }] }); canvas.backgroundImage = null; canvas.backgroundColor = grad; canvas.renderAll(); document.getElementById('bgSelect').value = 'none'; }
-    function applyPresetBackground() { if(!canvas) return; const type = document.getElementById('bgSelect').value; const darkGradients = { 'grad-navy': ['#020617', '#1e3a8a'], 'grad-crimson': ['#450a0a', '#991b1b'], 'grad-forest': ['#052e16', '#166534'], 'grad-gold': ['#422006', '#b45309'] }; canvas.backgroundImage = null; if (type === 'solid-white' || type === 'none') { canvas.backgroundColor = '#ffffff'; } else if (darkGradients[type]) { const grad = new fabric.Gradient({ type: 'linear', gradientUnits: 'pixels', coords: { x1: 0, y1: 0, x2: 0, y2: 1000 }, colorStops: [{ offset: 0, color: darkGradients[type][0] }, { offset: 1, color: darkGradients[type][1] }] }); canvas.backgroundColor = grad; } canvas.renderAll(); }
+    function applySolidBg() { if(!canvas) return; canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas)); canvas.backgroundColor = document.getElementById('bgSolidColor').value; canvas.renderAll(); document.getElementById('bgSelect').value = 'solid-white'; }
+    function applyCustomGradient() { if(!canvas) return; const grad = new fabric.Gradient({ type: 'linear', gradientUnits: 'pixels', coords: { x1: 0, y1: 0, x2: 0, y2: 1000 }, colorStops: [{ offset: 0, color: document.getElementById('gradCol1').value }, { offset: 1, color: document.getElementById('gradCol2').value }] }); canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas)); canvas.backgroundColor = grad; canvas.renderAll(); document.getElementById('bgSelect').value = 'none'; }
+    function applyPresetBackground() { if(!canvas) return; const type = document.getElementById('bgSelect').value; const darkGradients = { 'grad-navy': ['#020617', '#1e3a8a'], 'grad-crimson': ['#450a0a', '#991b1b'], 'grad-forest': ['#052e16', '#166534'], 'grad-gold': ['#422006', '#b45309'] }; canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas)); if (type === 'solid-white' || type === 'none') { canvas.backgroundColor = (type === 'solid-white' ? '#ffffff' : ''); } else if (darkGradients[type]) { const grad = new fabric.Gradient({ type: 'linear', gradientUnits: 'pixels', coords: { x1: 0, y1: 0, x2: 0, y2: 1000 }, colorStops: [{ offset: 0, color: darkGradients[type][0] }, { offset: 1, color: darkGradients[type][1] }] }); canvas.backgroundColor = grad; } canvas.renderAll(); }
     
     document.addEventListener('change', function(e) {
         if (e.target.id === 'bgImage') {
