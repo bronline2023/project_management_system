@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /Code/Admin/
+Disallow: /Code/Core_Logic/
+Disallow: /tmp/
+Disallow: /Code/User/dashboards/
+
+# For SEO: Point to the dynamic sitemap
+Sitemap: sitemap.php

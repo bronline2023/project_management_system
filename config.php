@@ -14,6 +14,9 @@ if (!defined('CONFIG_LOADED')) {
         session_start();
     }
 
+    // --- 0. VERSIONING ---
+    define('APP_VERSION', '1.0.5'); // Increment this to bust cache
+
     // --- 1. ERROR LOGGING ---
     define('LOGS_PATH', __DIR__ . '/Reports/Logs');
     if (!is_dir(LOGS_PATH)) {

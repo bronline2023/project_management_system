@@ -30,6 +30,8 @@ function getMasterPermissionsList() {
             'assign_task' => 'Assign Task',
             'all_tasks' => 'View All Tasks',
             'edit_task' => 'Edit Any Task',
+            'daily_work_entry' => 'Official Work Tracker',
+            'view_daily_reports' => 'Work Entry Records',
             'expenses' => 'Manage Expenses',
             'reports' => 'View Reports',
             'manage_recruitment_posts' => 'Manage Posts',
@@ -105,6 +107,11 @@ function getDashboardPermissionsList() {
         'show_task_summary' => 'Show Task Summary Cards',
         'show_user_client_summary' => 'Show User & Client Summary Cards',
         'show_appointment_summary' => 'Show Appointment Summary Cards',
+        'show_wallet_card' => 'Show Wallet Balance & Recharge',
+        'show_points_card' => 'Show Points & Earnings Card',
+        'show_subscription_status' => 'Show Subscription Status',
+        'show_notice_board' => 'Show Notice Board (Admin Notices)',
+        'show_active_services' => 'Show Active Services List',
         'show_pending_actions' => 'Show Pending Actions',
         'show_recent_activity' => 'Show Recent Activity Feed',
         'show_notifications' => 'Show User Notifications',
@@ -112,21 +119,39 @@ function getDashboardPermissionsList() {
 }
 
 function getDashboardPermissionsForRole($role_name) {
+    if (empty($role_name)) return [];
     $pdo = connectDB();
     $sql = "SELECT dashboard_permissions FROM roles WHERE role_name = ?";
     $role = fetchOne($pdo, $sql, [$role_name]);
-    $defaultPermissions = array_fill_keys(array_keys(getDashboardPermissionsList()), false);
-    if (strtolower($role_name) === 'admin') {
-        return array_fill_keys(array_keys($defaultPermissions), true);
+    
+    // All available dashboard permission keys
+    $allPerms = array_keys(getDashboardPermissionsList());
+    $defaultPermissions = array_fill_keys($allPerms, false);
+    
+    // Critical defaults that should be enabled if no configuration exists
+    $baseDefaults = ['show_notice_board', 'show_active_services', 'show_notifications', 'show_task_summary'];
+    
+    // Admin / Super Admin mapping
+    if (in_array(strtolower($role_name), ['admin', 'super admin', 'master admin'])) {
+        return array_fill_keys($allPerms, true);
     }
+
     if ($role && !empty($role['dashboard_permissions'])) {
         $dbPermissions = json_decode($role['dashboard_permissions'], true);
-        if (is_array($dbPermissions)) {
+        if (is_array($dbPermissions) && !empty($dbPermissions)) {
             foreach ($dbPermissions as $perm) {
                 if (array_key_exists($perm, $defaultPermissions)) {
                     $defaultPermissions[$perm] = true;
                 }
             }
+            return $defaultPermissions;
+        }
+    }
+    
+    // Fallback: If role has empty permissions or isn't found, enable base defaults
+    foreach ($baseDefaults as $b) {
+        if (array_key_exists($b, $defaultPermissions)) {
+            $defaultPermissions[$b] = true;
         }
     }
     return $defaultPermissions;

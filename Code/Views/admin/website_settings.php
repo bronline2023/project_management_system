@@ -56,10 +56,10 @@ $currentSettings = fetchOne($pdo, "SELECT * FROM settings WHERE id = 1 LIMIT 1")
                     </select>
 
                     <label class="form-label fw-bold">Menu Text Color</label>
-                    <input type="color" class="form-control form-control-color mb-3" name="menu_color" value="<?= htmlspecialchars($currentSettings['menu_color'] ?: '#ffffff') ?>" title="Choose Menu Color">
+                    <input type="color" class="form-control form-control-color mb-3" name="menu_color" value="<?= htmlspecialchars($currentSettings['menu_color'] ?: '#1e293b') ?>" title="Choose Menu Color">
 
                     <label class="form-label fw-bold">Active Menu Text Color</label>
-                    <input type="color" class="form-control form-control-color" name="menu_active_color" value="<?= htmlspecialchars($currentSettings['menu_active_color'] ?: '#f39c12') ?>" title="Choose Active Menu Color">
+                    <input type="color" class="form-control form-control-color" name="menu_active_color" value="<?= htmlspecialchars($currentSettings['menu_active_color'] ?: '#4f46e5') ?>" title="Choose Active Menu Color">
                 </div>
             </div>
             

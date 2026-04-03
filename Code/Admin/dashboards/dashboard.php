@@ -1,211 +1,222 @@
 <?php
 /**
- * admin/dashboard.php
- * FINAL & COMPLETE: A completely redesigned admin dashboard.
- * All CSS styles have been moved to the central style.css file.
+ * admin/dashboards/dashboard.php
+ * ROBUST & HIGH-CONTRAST ADMIN DASHBOARD
  */
 
-$pdo = connectDB();
-$currentUserName = $_SESSION['user_name'] ?? 'Admin';
-
-// --- [ 1. Fetching Data for Stat Cards ] ---
-$totalUsers = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM users");
-$totalClients = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM clients");
-$totalTasks = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM work_assignments");
-$pendingTasks = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM work_assignments WHERE status = 'pending'");
-$inProcessTasks = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM work_assignments WHERE status = 'in_process'");
-$totalEarnings = (float)fetchColumn($pdo, "SELECT SUM(task_price) FROM work_assignments WHERE status = 'verified_completed'");
-$totalExpenses = (float)fetchColumn($pdo, "SELECT SUM(amount) FROM expenses");
-$netProfit = $totalEarnings - $totalExpenses;
-$pendingWithdrawals = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM withdrawals WHERE status = 'pending'");
-$pendingRecruitmentPosts = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM recruitment_posts WHERE approval_status = 'pending'");
-$newRecruitmentPosts = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM recruitment_posts WHERE is_new_for_admin = 1");
-
-$settings = fetchOne($pdo, "SELECT currency_symbol FROM settings LIMIT 1");
-$currencySymbol = htmlspecialchars($settings['currency_symbol'] ?? '₹');
-
-// --- [ Appointment Counts ] ---
-$totalAppointments = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM appointments");
-$todayAppointments = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM appointments WHERE appointment_date = CURDATE() AND status = 'pending'");
-$completedAppointments = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM appointments WHERE status = 'completed'");
-$cancelledAppointments = (int)fetchColumn($pdo, "SELECT COUNT(id) FROM appointments WHERE status = 'cancelled'");
-
-// --- [ New Expense Counts ] ---
-$monthlyExpenses = (float)fetchColumn($pdo, "SELECT SUM(amount) FROM expenses WHERE YEAR(expense_date) = YEAR(CURDATE()) AND MONTH(expense_date) = MONTH(CURDATE())");
-$yearlyExpenses = (float)fetchColumn($pdo, "SELECT SUM(amount) FROM expenses WHERE YEAR(expense_date) = YEAR(CURDATE())");
-
-
-// --- [ 2. Fetching Data for Recent Activities ] ---
-$recentTasks = fetchAll($pdo, "SELECT wa.id, wa.work_description, u.name as assigned_to, cl.client_name, wa.created_at FROM work_assignments wa JOIN users u ON wa.assigned_to_user_id = u.id JOIN clients cl ON wa.client_id = cl.id ORDER BY wa.created_at DESC LIMIT 5");
-$recentUsers = fetchAll($pdo, "SELECT name, email, created_at FROM users ORDER BY created_at DESC LIMIT 5");
-$recentNotifications = fetchAll($pdo, "SELECT * FROM notifications ORDER BY created_at DESC LIMIT 5");
-
-// --- [ 2.5 Fetching Expiring Premium Gold Subscriptions ] ---
-$expiringPortals = [];
-if (in_array($_SESSION['user_role'] ?? '', ['master_admin', 'admin'])) {
-    $expiringPortals = fetchAll($pdo, "
-        SELECT p.*, u.name, u.email 
-        FROM portals p 
-        JOIN users u ON p.owner_id = u.id 
-        WHERE p.expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY) 
-        AND p.status = 'active'
-        ORDER BY p.expiry_date ASC
-    ");
+// Global context safety
+if (!isset($pdo)) {
+    $pdo = connectDB();
 }
 
-// --- [ 3. Fetching Data for Chart ] ---
-$chartData = fetchAll($pdo, "
-    SELECT 
-        DATE_FORMAT(month_year, '%b %Y') as month,
-        total_earnings,
-        total_expenses
-    FROM (
-        SELECT DATE_FORMAT(created_at, '%Y-%m-01') as month_year, SUM(task_price) as total_earnings, 0 as total_expenses
-        FROM work_assignments
-        WHERE status = 'verified_completed'
-        GROUP BY month_year
-        UNION ALL
-        SELECT DATE_FORMAT(expense_date, '%Y-%m-01') as month_year, 0 as total_earnings, SUM(amount) as total_expenses
-        FROM expenses
-        GROUP BY month_year
-    ) as combined
-    GROUP BY month_year
-    ORDER BY month_year DESC
-    LIMIT 6
-");
-$chartData = array_reverse($chartData); 
-$chartLabels = json_encode(array_column($chartData, 'month'));
-$chartEarnings = json_encode(array_column($chartData, 'total_earnings'));
-$chartExpenses = json_encode(array_column($chartData, 'total_expenses'));
+$user_role = $_SESSION['user_role'] ?? 'admin';
+$user_name = $_SESSION['user_name'] ?? 'Admin';
+
+// Fetch Core Metrics with fallback to avoid blank page on DB error
+$metrics = [
+    'total_appointments' => 0,
+    'today_appointments' => 0,
+    'completed_appointments' => 0,
+    'cancelled_appointments' => 0,
+    'total_tasks' => 0,
+    'pending_tasks' => 0,
+    'total_users' => 0,
+    'revenue' => 0,
+    'expenses' => 0
+];
+
+try {
+    $metrics['total_appointments'] = (int)fetchColumn($pdo, "SELECT COUNT(*) FROM appointments") ?: 0;
+    $metrics['today_appointments'] = (int)fetchColumn($pdo, "SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE()") ?: 0;
+    $metrics['completed_appointments'] = (int)fetchColumn($pdo, "SELECT COUNT(*) FROM appointments WHERE status = 'completed'") ?: 0;
+    $metrics['cancelled_appointments'] = (int)fetchColumn($pdo, "SELECT COUNT(*) FROM appointments WHERE status = 'cancelled'") ?: 0;
+    $metrics['total_tasks'] = (int)fetchColumn($pdo, "SELECT COUNT(*) FROM work_assignments") ?: 0;
+    $metrics['pending_tasks'] = (int)fetchColumn($pdo, "SELECT COUNT(*) FROM work_assignments WHERE status = 'pending'") ?: 0;
+    $metrics['total_users'] = (int)fetchColumn($pdo, "SELECT COUNT(*) FROM users") ?: 0;
+    $metrics['revenue'] = (float)fetchColumn($pdo, "SELECT SUM(fee) FROM work_assignments WHERE status = 'completed'") ?: 0;
+    $metrics['expenses'] = (float)fetchColumn($pdo, "SELECT SUM(amount) FROM expenses") ?: 0;
+} catch (Exception $e) { /* silent fail, show 0 */ }
+
+// Recent Tasks
+$recentTasksList = [];
+try {
+    $recentTasksList = fetchAll($pdo, "SELECT wa.id, wa.work_description, u.name as assigned_to, cl.client_name, wa.created_at, wa.status FROM work_assignments wa LEFT JOIN users u ON wa.assigned_to_user_id = u.id LEFT JOIN clients cl ON wa.client_id = cl.id ORDER BY wa.id DESC LIMIT 5");
+} catch (Exception $e) { /* fallback empty list */ }
+
+require_once MODELS_PATH . 'roles.php';
+$dash_perms = [];
+try {
+    $dash_perms = getDashboardPermissionsForRole($user_role);
+} catch (Exception $e) { /* admin fallback */ }
+
 ?>
-
-<div class="container-fluid admin-dashboard">
-    <div class="d-sm-flex align-items-center justify-content-between mb-4">
-        <h1 class="h3 mb-0 text-gray-800">Admin Dashboard</h1>
-        <span class="text-muted">Welcome back, <strong><?= htmlspecialchars($currentUserName) ?></strong>!</span>
-    </div>
-
-    <!-- EXPIRING SUBSCRIPTIONS ALERT (Premium Gold) -->
-    <?php if(!empty($expiringPortals)): ?>
-    <div class="alert alert-warning shadow-sm border-warning mb-4 rounded-3">
-        <h4 class="alert-heading fw-bold text-dark"><i class="fas fa-exclamation-triangle text-danger me-2"></i> Premium Gold Subscriptions Expiring Soon!</h4>
-        <p class="mb-2 text-dark">The following users' Master Admin Portals are expiring within 30 days. Please notify them.</p>
-        <div class="table-responsive bg-white rounded-3 shadow-sm p-2 mt-3">
-            <table class="table table-sm table-borderless table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Domain</th>
-                        <th>Owner</th>
-                        <th>Email</th>
-                        <th>Expiry Date</th>
-                        <th class="text-end">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($expiringPortals as $ep): 
-                        $expDate = strtotime($ep['expiry_date']);
-                        $daysLeft = round(($expDate - time()) / (60 * 60 * 24));
-                    ?>
-                    <tr class="align-middle">
-                        <td class="fw-bold text-primary"><?= htmlspecialchars($ep['domain_name']) ?></td>
-                        <td><?= htmlspecialchars($ep['name']) ?></td>
-                        <td><?= htmlspecialchars($ep['email']) ?></td>
-                        <td>
-                            <span class="badge bg-<?= $daysLeft <= 7 ? 'danger' : 'warning text-dark' ?>">
-                                <?= date('d M, Y', $expDate) ?> (<?= $daysLeft ?> days left)
-                            </span>
-                        </td>
-                        <td class="text-end">
-                            <a href="mailto:<?= urlencode($ep['email']) ?>?subject=Your Premium Gold Subscription is Expiring Soon!&body=Dear <?= urlencode($ep['name']) ?>,%0D%0A%0D%0AYour portal subscription for <?= urlencode($ep['domain_name']) ?> will expire on <?= date('d M, Y', $expDate) ?>. Please renew to continue services." class="btn btn-sm btn-outline-danger rounded-pill px-3 shadow-sm"><i class="fas fa-envelope"></i> Email Alert</a>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
+<div class="p-4" style="background: #f8fafc; min-height: 100vh;">
+    <!-- Notice Board -->
+    <?php if ($dash_perms['show_notice_board'] ?? true): ?>
+        <?php if (file_exists(VIEWS_PATH . 'components/notice_board.php')) include VIEWS_PATH . 'components/notice_board.php'; ?>
     <?php endif; ?>
 
-    <div class="row">
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-revenue"><div class="card-body"><div class="stat-icon"><i class="fas fa-dollar-sign"></i></div><div class="stat-content"><div class="text">Total Revenue</div><div class="number"><?= $currencySymbol ?><?= number_format($totalEarnings, 2) ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-expenses-monthly"><div class="card-body"><div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div><div class="stat-content"><div class="text">Monthly Expenses</div><div class="number"><?= $currencySymbol ?><?= number_format($monthlyExpenses, 2) ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-expenses-yearly"><div class="card-body"><div class="stat-icon"><i class="fas fa-money-check-alt"></i></div><div class="stat-content"><div class="text">Yearly Expenses</div><div class="number"><?= $currencySymbol ?><?= number_format($yearlyExpenses, 2) ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-profit"><div class="card-body"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-content"><div class="text">Net Profit</div><div class="number"><?= $currencySymbol ?><?= number_format($netProfit, 2) ?></div></div></div></div></div>
-    </div>
-    
-    <div class="row">
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-total-tasks"><div class="card-body"><div class="stat-icon"><i class="fas fa-list-ul"></i></div><div class="stat-content"><div class="text">Total Tasks</div><div class="number"><?= $totalTasks ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-in-process"><div class="card-body"><div class="stat-icon"><i class="fas fa-cogs"></i></div><div class="stat-content"><div class="text">In Process Tasks</div><div class="number"><?= $inProcessTasks ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-admin-tasks"><div class="card-body"><div class="stat-icon"><i class="fas fa-tasks"></i></div><div class="stat-content"><div class="text">Pending Tasks</div><div class="number"><?= $pendingTasks ?> / <?= $totalTasks ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-users"><div class="card-body"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-content"><div class="text">Total Users</div><div class="number"><?= $totalUsers ?></div></div></div></div></div>
-    </div>
-    
-    <div class="row">
-        <div class="col-xl-3 col-md-6 mb-4">
-             <div class="stat-card card-appointments">
-                <div class="card-body">
-                     <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
-                     <div class="stat-content">
-                         <div class="text">Total Appointments</div>
-                         <div class="number"><?= $totalAppointments ?></div>
-                     </div>
-                </div>
-            </div>
+    <div class="d-flex align-items-center justify-content-between mb-4 mt-2">
+        <div>
+            <?php 
+                $display_title = ucfirst(str_replace(['_', '-'], ' ', $user_role)) . ' Dashboard';
+                if (strtolower($user_role) === 'admin' || strtolower($user_role) === 'master_admin') $display_title = 'Admin Dashboard';
+            ?>
+            <h2 class="fw-bold text-dark mb-1"><?= $display_title ?></h2>
+            <p class="text-muted small">Overview of your operations and system metrics.</p>
         </div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-appointment-today"><div class="card-body"><div class="stat-icon"><i class="fas fa-calendar-day"></i></div><div class="stat-content"><div class="text">Today's Appointments</div><div class="number"><?= $todayAppointments ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-appointment-completed"><div class="card-body"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-content"><div class="text">Completed Appointments</div><div class="number"><?= $completedAppointments ?></div></div></div></div></div>
-        <div class="col-xl-3 col-md-6 mb-4"><div class="stat-card card-appointment-cancelled"><div class="card-body"><div class="stat-icon"><i class="fas fa-times-circle"></i></div><div class="stat-content"><div class="text">Cancelled Appointments</div><div class="number"><?= $cancelledAppointments ?></div></div></div></div></div>
+        <div class="badge bg-primary px-3 py-2 rounded-pill">Welcome, <?= htmlspecialchars($user_name) ?></div>
     </div>
 
-    <div class="row">
-        <div class="col-xl-8 col-lg-7 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-dark text-white d-flex flex-row align-items-center justify-content-between"><h5 class="m-0 font-weight-bold"><i class="fas fa-chart-bar me-2"></i>Monthly Overview (Last 6 Months)</h5></div>
-                <div class="card-body"><div class="chart-area"><canvas id="myAreaChart"></canvas></div></div>
-            </div>
-        </div>
-
-        <div class="col-xl-4 col-lg-5 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-dark text-white"><h5 class="m-0 font-weight-bold"><i class="fas fa-bell me-2"></i>Pending Actions</h5></div>
-                <div class="card-body">
-                    <div class="quick-stats">
-                        <a href="?page=manage_withdrawals" class="stat-item"><div class="icon bg-warning"><i class="fas fa-hand-holding-usd"></i></div><div class="content"><span class="value"><?= $pendingWithdrawals ?></span><span class="label">Withdrawal Requests</span></div></a>
-                        <a href="?page=manage_recruitment_posts" class="stat-item"><div class="icon bg-info"><i class="fas fa-bullhorn"></i></div><div class="content"><span class="value"><?= $pendingRecruitmentPosts ?></span><span class="label">Recruitment Posts</span></div></a>
-                        <a href="?page=all_tasks&status=pending" class="stat-item"><div class="icon bg-danger"><i class="fas fa-inbox"></i></div><div class="content"><span class="value"><?= $pendingTasks ?></span><span class="label">Unassigned Tasks</span></div></a>
+    <!-- MAIN METRIC CARDS (High Visibility) -->
+    <div class="row g-4 mb-4">
+        <!-- Revenue -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 text-white p-2" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75 text-uppercase fw-bold">Earning</div>
+                        <div class="h3 fw-bold mb-0">₹<?= number_format($metrics['revenue'], 2) ?></div>
                     </div>
+                    <i class="fas fa-indian-rupee-sign fa-2x opacity-25"></i>
+                </div>
+            </div>
+        </div>
+        <!-- Expenses -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 text-white p-2" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75 text-uppercase fw-bold">Expenses</div>
+                        <div class="h3 fw-bold mb-0">₹<?= number_format($metrics['expenses'], 2) ?></div>
+                    </div>
+                    <i class="fas fa-money-bill-transfer fa-2x opacity-25"></i>
+                </div>
+            </div>
+        </div>
+        <!-- Tasks -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 text-white p-2" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75 text-uppercase fw-bold">Total Tasks</div>
+                        <div class="h3 fw-bold mb-0"><?= $metrics['total_tasks'] ?></div>
+                    </div>
+                    <i class="fas fa-clipboard-list fa-2x opacity-25"></i>
+                </div>
+            </div>
+        </div>
+        <!-- Users -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 text-white p-2" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75 text-uppercase fw-bold">Active Users</div>
+                        <div class="h3 fw-bold mb-0"><?= $metrics['total_users'] ?></div>
+                    </div>
+                    <i class="fas fa-users-gear fa-2x opacity-25"></i>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-dark text-white"><h5 class="m-0 font-weight-bold"><i class="fas fa-history me-2"></i>Recent Activity</h5></div>
-                <div class="card-body">
-                    <div class="activity-feed">
-                        <?php foreach($recentTasks as $task): ?>
-                        <div class="activity-item"><div class="activity-icon bg-primary"><i class="fas fa-clipboard-list"></i></div><div><strong>New Task Assigned:</strong> #<?= $task['id'] ?> for client <?= htmlspecialchars($task['client_name']) ?><div class="activity-meta"><?= date('d M, Y H:i', strtotime($task['created_at'])) ?></div></div></div>
-                        <?php endforeach; ?>
-                        <?php foreach($recentUsers as $user): ?>
-                        <div class="activity-item"><div class="activity-icon bg-success"><i class="fas fa-user-plus"></i></div><div><strong>New User Registered:</strong> <?= htmlspecialchars($user['name']) ?><div class="activity-meta"><?= date('d M, Y H:i', strtotime($user['created_at'])) ?></div></div></div>
-                        <?php endforeach; ?>
-                    </div>
+    <!-- APPOINTMENT METRICS -->
+    <div class="row g-4 mb-4">
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 p-1" style="background: #fff; border-left: 5px solid #0284c7 !important;">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div><div class="text-muted small fw-bold">ALL APPOINTMENTS</div><div class="h4 fw-bold mb-0 text-dark"><?= $metrics['total_appointments'] ?></div></div>
+                    <i class="fas fa-calendar-check text-info fa-lg"></i>
                 </div>
             </div>
         </div>
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-dark text-white"><h5 class="m-0 font-weight-bold"><i class="fas fa-bell-on me-2"></i>User Notifications</h5></div>
-                <div class="card-body">
-                    <div class="activity-feed">
-                        <?php if(empty($recentNotifications)): ?>
-                            <p class="text-center text-muted">No new notifications.</p>
-                        <?php endif; ?>
-                        <?php foreach($recentNotifications as $notification): ?>
-                        <div class="activity-item"><div class="activity-icon bg-info"><i class="fas fa-comment-alt-dots"></i></div><div><?= htmlspecialchars($notification['message']) ?><div class="activity-meta"><?= date('d M, Y H:i', strtotime($notification['created_at'])) ?></div></div></div>
-                        <?php endforeach; ?>
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 p-1" style="background: #fff; border-left: 5px solid #8b5cf6 !important;">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div><div class="text-muted small fw-bold">TODAY'S BOOKINGS</div><div class="h4 fw-bold mb-0 text-dark"><?= $metrics['today_appointments'] ?></div></div>
+                    <i class="fas fa-calendar-day text-purple fa-lg"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 p-1" style="background: #fff; border-left: 5px solid #22c55e !important;">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div><div class="text-muted small fw-bold">DONE / COMPLETED</div><div class="h4 fw-bold mb-0 text-dark"><?= $metrics['completed_appointments'] ?></div></div>
+                    <i class="fas fa-check-double text-success fa-lg"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 p-1" style="background: #fff; border-left: 5px solid #ef4444 !important;">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div><div class="text-muted small fw-bold">CANCELLATIONS</div><div class="h4 fw-bold mb-0 text-dark"><?= $metrics['cancelled_appointments'] ?></div></div>
+                    <i class="fas fa-calendar-xmark text-danger fa-lg"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Recent Work History -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold m-0 text-dark"><i class="fas fa-history me-2 text-primary"></i>Recent Task Activity</h5>
+                    <?php 
+                        $view_all_url = "";
+                        if (strtolower($user_role) === 'admin' || strtolower($user_role) === 'master_admin') {
+                            $view_all_url = "?page=all_tasks";
+                        } elseif (strtolower($user_role) === 'accountant') {
+                            $view_all_url = "?page=my_daily_entries";
+                        } elseif (in_array('all_tasks', $_SESSION['user_permissions'] ?? [])) {
+                            $view_all_url = "?page=all_tasks";
+                        }
+                    ?>
+                    <?php if ($view_all_url): ?>
+                        <a href="<?= $view_all_url ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3">View All</a>
+                    <?php endif; ?>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr><th>Work ID</th><th>Client</th><th>Assigned To</th><th>Status</th><th>Date</th></tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($recentTasksList)): ?>
+                                <tr><td colspan="5" class="text-center py-5 text-muted">No recent tasks found.</td></tr>
+                            <?php else: foreach($recentTasksList as $task): ?>
+                                <tr>
+                                    <td class="fw-bold text-primary">#<?= $task['id'] ?></td>
+                                    <td><?= htmlspecialchars($task['client_name'] ?? 'N/A') ?></td>
+                                    <td><?= htmlspecialchars($task['assigned_to'] ?? 'Unassigned') ?></td>
+                                    <td><span class="badge bg-light text-dark shadow-sm border"><?= ucfirst($task['status'] ?? 'pending') ?></span></td>
+                                    <td class="text-muted small"><?= date('d M Y', strtotime($task['created_at'] ?? 'now')) ?></td>
+                                </tr>
+                            <?php endforeach; endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Summary Quick List -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 h-100">
+                <h5 class="fw-bold mb-4 text-dark"><i class="fas fa-bolt me-2 text-warning"></i>Quick Summary</h5>
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center border-0 px-0 mb-2">
+                        <div class="d-flex align-items-center">
+                            <div class="icon-circle bg-danger-subtle text-danger me-3"><i class="fas fa-clock"></i></div>
+                            <span class="text-muted fw-bold small">Pending Tasks</span>
+                        </div>
+                        <span class="badge bg-danger rounded-pill"><?= $metrics['pending_tasks'] ?></span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center border-0 px-0 mb-2">
+                        <div class="d-flex align-items-center">
+                            <div class="icon-circle bg-primary-subtle text-primary me-3"><i class="fas fa-calendar"></i></div>
+                            <span class="text-muted fw-bold small">Today's Appointments</span>
+                        </div>
+                        <span class="badge bg-primary rounded-pill"><?= $metrics['today_appointments'] ?></span>
                     </div>
                 </div>
             </div>
@@ -213,38 +224,7 @@ $chartExpenses = json_encode(array_column($chartData, 'total_expenses'));
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    var ctx = document.getElementById("myAreaChart");
-    if (ctx) {
-        var myLineChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: <?= $chartLabels ?>,
-                datasets: [{
-                    label: "Earnings",
-                    backgroundColor: 'rgba(78, 115, 223, 0.1)',
-                    borderColor: "rgba(78, 115, 223, 1)",
-                    data: <?= $chartEarnings ?>,
-                    tension: 0.3
-                }, {
-                    label: "Expenses",
-                    backgroundColor: 'rgba(231, 74, 59, 0.1)',
-                    borderColor: "rgba(231, 74, 59, 1)",
-                    data: <?= $chartExpenses ?>,
-                    tension: 0.3
-                }],
-            },
-            options: {
-                maintainAspectRatio: false,
-                responsive: true,
-                scales: {
-                    x: { grid: { display: false } },
-                    y: { ticks: { callback: function(value) { return '<?= $currencySymbol ?>' + value; } } }
-                }
-            }
-        });
-    }
-});
-</script>
+<style>
+    .text-purple { color: #8b5cf6; }
+    .icon-circle { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+</style>

@@ -33,6 +33,7 @@ require_once MODELS_PATH . 'messages.php';
 require_once RECRUITMENT_MODELS_PATH . 'recruitment_post.php';
 require_once MODELS_PATH . 'email_helper.php';
 require_once MODELS_PATH . 'whatsapp_helper.php';
+require_once MODELS_PATH . 'notices.php';
 
 $pdo = connectDB();
 $currentUserId = $_SESSION['user_id'] ?? null;
@@ -420,7 +421,34 @@ try {
                 }
             }
 
+            $qrCodeUrl = null;
+            if (!empty($_FILES['manual_qr_code']['name'])) {
+                $uploadDir = UPLOADS_PATH . 'logo/';
+                if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+                
+                $fileName = 'qr_payment_' . time() . '_' . basename($_FILES['manual_qr_code']['name']);
+                $targetFile = $uploadDir . $fileName;
+                
+                if (move_uploaded_file($_FILES['manual_qr_code']['tmp_name'], $targetFile)) {
+                    $qrCodeUrl = UPLOADS_DIR_RELATIVE . 'logo/' . $fileName;
+                }
+            }
+
             $workingDays = isset($_POST['office_working_days']) ? implode(',', $_POST['office_working_days']) : '';
+
+            $adsGlobalToggle = isset($_POST['ads_global_toggle']) ? 1 : 0;
+            $adsEnabledServices = isset($_POST['ads_enabled_services']) ? json_encode($_POST['ads_enabled_services']) : '[]';
+
+            // SEO Image Upload
+            $seoOgImageUrl = null;
+            if (!empty($_FILES['seo_og_image']['name'])) {
+                $uploadDir = UPLOADS_PATH . 'seo/';
+                if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+                $fileName = 'og_image_' . time() . '_' . basename($_FILES['seo_og_image']['name']);
+                if (move_uploaded_file($_FILES['seo_og_image']['tmp_name'], $uploadDir . $fileName)) {
+                    $seoOgImageUrl = UPLOADS_DIR_RELATIVE . 'seo/' . $fileName;
+                }
+            }
 
             $sql = "UPDATE settings SET 
                 app_name = ?, currency_symbol = ?, office_address = ?, helpline_number = ?, 
@@ -428,7 +456,10 @@ try {
                 office_working_days = ?, earning_per_approved_post = ?, minimum_withdrawal_amount = ?, 
                 whatsapp_business_number = ?, whatsapp_api_key = ?, 
                 smtp_host = ?, smtp_port = ?, smtp_encryption = ?, 
-                smtp_username = ?, smtp_from_email = ?, smtp_from_name = ?, header_style = ?";
+                smtp_username = ?, smtp_from_email = ?, smtp_from_name = ?, header_style = ?, 
+                manual_bank_name = ?, manual_account_number = ?, manual_ifsc_code = ?, manual_micr_code = ?, manual_upi_id = ?, manual_upi_name = ?,
+                ads_global_toggle = ?, ads_enabled_services = ?, adsense_global_code = ?, adsense_ad_unit_code = ?,
+                seo_title = ?, seo_description = ?, seo_keywords = ?, seo_global_code_head = ?, seo_global_code_body = ?, google_site_verification = ?";
             
             $params = [
                 $_POST['app_name'], $_POST['currency_symbol'], $_POST['office_address'], $_POST['helpline_number'],
@@ -437,7 +468,12 @@ try {
                 $_POST['whatsapp_phone_number_id'], $_POST['whatsapp_access_token'],
                 $_POST['smtp_host'], $_POST['smtp_port'], $_POST['smtp_encryption'],
                 $_POST['smtp_username'], $_POST['smtp_from_email'], $_POST['smtp_from_name'],
-                $_POST['header_style'] ?? 'style1'
+                $_POST['header_style'] ?? 'style1',
+                $_POST['manual_bank_name'] ?? '', $_POST['manual_account_number'] ?? '', $_POST['manual_ifsc_code'] ?? '',
+                $_POST['manual_micr_code'] ?? '', $_POST['manual_upi_id'] ?? '', $_POST['manual_upi_name'] ?? '',
+                $adsGlobalToggle, $adsEnabledServices, $_POST['adsense_global_code'] ?? '', $_POST['adsense_ad_unit_code'] ?? '',
+                $_POST['seo_title'] ?? '', $_POST['seo_description'] ?? '', $_POST['seo_keywords'] ?? '', 
+                $_POST['seo_global_code_head'] ?? '', $_POST['seo_global_code_body'] ?? '', $_POST['google_site_verification'] ?? ''
             ];
 
             if ($logoUrl) {
@@ -447,6 +483,14 @@ try {
             if ($websiteLogoUrl) {
                 $sql .= ", website_logo_url = ?";
                 $params[] = $websiteLogoUrl;
+            }
+            if ($qrCodeUrl) {
+                $sql .= ", manual_qr_code_url = ?";
+                $params[] = $qrCodeUrl;
+            }
+            if ($seoOgImageUrl) {
+                $sql .= ", seo_og_image = ?";
+                $params[] = $seoOgImageUrl;
             }
             if (!empty($_POST['smtp_password'])) {
                 $sql .= ", smtp_password = ?";
@@ -491,6 +535,131 @@ try {
             addNotification($_POST['assigned_to_user_id'], "New task assigned.", "?page=my_freelancer_tasks");
             $_SESSION['status_message'] = '<div class="alert alert-success">Task assigned successfully!</div>';
             $pageRedirect = 'all_tasks';
+            break;
+
+        case 'add_daily_entry':
+            $clientId = $_POST['client_id'] ?? null;
+            if (empty($clientId) && !empty($_POST['customer_id'])) {
+                $customer = fetchOne($pdo, "SELECT client_id FROM customers WHERE id = ?", [$_POST['customer_id']]);
+                $clientId = $customer['client_id'] ?? null;
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO work_assignments (customer_id, client_id, assigned_to_user_id, assigned_by_user_id, category_id, subcategory_id, work_description, deadline, fee, fee_mode, maintenance_fee, maintenance_fee_mode, discount, status, payment_status, is_daily_entry, loss_amount, partial_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
+            $stmt->execute([
+                $_POST['customer_id'] ?? null, $clientId, $currentUserId, $currentUserId, 
+                $_POST['category_id'], $_POST['subcategory_id'] ?? null, $_POST['work_description'] ?? '', $_POST['deadline'], 
+                $_POST['fee'] ?? 0, $_POST['fee_mode'] ?? 'pending', $_POST['maintenance_fee'] ?? 0, $_POST['maintenance_fee_mode'] ?? 'pending', 
+                $_POST['discount'] ?? 0, $_POST['status'] ?? 'pending', $_POST['payment_status'] ?? 'pending',
+                $_POST['loss_amount'] ?? 0, $_POST['partial_amount'] ?? 0
+            ]);
+            
+            $workId = $pdo->lastInsertId();
+
+            // Handle Multiple Attachments
+            if (!empty($_FILES['attachments']['name'][0])) {
+                $uploadDir = UPLOADS_PATH . 'daily_work/';
+                if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+
+                foreach ($_FILES['attachments']['name'] as $key => $name) {
+                    if ($_FILES['attachments']['error'][$key] === UPLOAD_ERR_OK) {
+                        $ext = pathinfo($name, PATHINFO_EXTENSION);
+                        $fileName = 'dw_' . $workId . '_' . time() . '_' . $key . '.' . $ext;
+                        if (move_uploaded_file($_FILES['attachments']['tmp_name'][$key], $uploadDir . $fileName)) {
+                            $pdo->prepare("INSERT INTO daily_work_attachments (work_id, file_path, file_name) VALUES (?, ?, ?)")
+                                ->execute([$workId, $fileName, $name]);
+                        }
+                    }
+                }
+            }
+            
+            $_SESSION['status_message'] = '<div class="alert alert-success">Daily work entry saved successfully!</div>';
+            $pageRedirect = 'my_daily_entries';
+            break;
+
+        case 'update_daily_entry':
+            $taskId = $_POST['task_id'];
+            $oldTask = fetchOne($pdo, "SELECT status, payment_status, assigned_to_user_id FROM work_assignments WHERE id = ?", [$taskId]);
+            
+            if (!$oldTask) throw new Exception('Task not found.');
+
+            // Permission Check
+            $is_admin = ($_SESSION['user_role'] === 'admin' || $_SESSION['user_role'] === 'master_admin');
+            if (!$is_admin) {
+                if ($oldTask['status'] === 'completed') throw new Exception('Completed work cannot be edited by non-admins.');
+                if (!in_array($oldTask['payment_status'], ['pending', 'partial_paid'])) throw new Exception('Only pending or partial paid entries can be edited.');
+            }
+
+            $clientId = $_POST['client_id'] ?? null;
+            if (empty($clientId) && !empty($_POST['customer_id'])) {
+                $cust = fetchOne($pdo, "SELECT client_id FROM customers WHERE id = ?", [$_POST['customer_id']]);
+                $clientId = $cust['client_id'] ?? null;
+            }
+
+            $stmt = $pdo->prepare("UPDATE work_assignments SET customer_id = ?, client_id = ?, category_id = ?, subcategory_id = ?, work_description = ?, deadline = ?, fee = ?, fee_mode = ?, maintenance_fee = ?, maintenance_fee_mode = ?, discount = ?, status = ?, payment_status = ?, loss_amount = ?, partial_amount = ? WHERE id = ?");
+            $stmt->execute([
+                $_POST['customer_id'] ?? null, $clientId, $_POST['category_id'], $_POST['subcategory_id'] ?? null,
+                $_POST['work_description'] ?? '', $_POST['deadline'], $_POST['fee'] ?? 0, $_POST['fee_mode'] ?? 'pending',
+                $_POST['maintenance_fee'] ?? 0, $_POST['maintenance_fee_mode'] ?? 'pending', $_POST['discount'] ?? 0, 
+                $_POST['status'] ?? 'pending', $_POST['payment_status'] ?? 'pending',
+                $_POST['loss_amount'] ?? 0, $_POST['partial_amount'] ?? 0, $taskId
+            ]);
+
+            // Handle Deleted Attachments
+            $existingPostIds = $_POST['existing_attachments'] ?? [];
+            $allCurrent = fetchAll($pdo, "SELECT id, file_path FROM daily_work_attachments WHERE work_id = ?", [$taskId]);
+            foreach ($allCurrent as $att) {
+                if (!in_array($att['id'], $existingPostIds)) {
+                    // File removed in UI, delete from DB and Disk
+                    $filePath = UPLOADS_PATH . 'daily_work/' . $att['file_path'];
+                    if (file_exists($filePath)) @unlink($filePath);
+                    $pdo->prepare("DELETE FROM daily_work_attachments WHERE id = ?")->execute([$att['id']]);
+                }
+            }
+
+            // Handle New Multi-Attachments
+            if (!empty($_FILES['attachments']['name'][0])) {
+                $uploadDir = UPLOADS_PATH . 'daily_work/';
+                if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+
+                foreach ($_FILES['attachments']['name'] as $key => $name) {
+                    if ($_FILES['attachments']['error'][$key] === UPLOAD_ERR_OK) {
+                        $ext = pathinfo($name, PATHINFO_EXTENSION);
+                        $fileName = 'dw_' . $taskId . '_' . time() . '_' . $key . '.' . $ext;
+                        if (move_uploaded_file($_FILES['attachments']['tmp_name'][$key], $uploadDir . $fileName)) {
+                            $pdo->prepare("INSERT INTO daily_work_attachments (work_id, file_path, file_name) VALUES (?, ?, ?)")
+                                ->execute([$taskId, $fileName, $name]);
+                        }
+                    }
+                }
+            }
+
+            $_SESSION['status_message'] = '<div class="alert alert-success">Daily work entry updated!</div>';
+            $pageRedirect = 'my_daily_entries';
+            break;
+
+        case 'delete_daily_entry':
+            $taskId = $_POST['task_id'];
+            $oldTask = fetchOne($pdo, "SELECT status, payment_status, assigned_to_user_id FROM work_assignments WHERE id = ?", [$taskId]);
+            
+            if (!$oldTask) throw new Exception('Task not found.');
+
+            $is_admin = ($_SESSION['user_role'] === 'admin' || $_SESSION['user_role'] === 'master_admin');
+            if (!$is_admin) {
+                if ($oldTask['status'] === 'completed') throw new Exception('Completed work cannot be deleted by non-admins.');
+                if (!in_array($oldTask['payment_status'], ['pending', 'partial_paid'])) throw new Exception('Only pending or partial paid entries can be deleted.');
+            }
+
+            // Cleanup Attachments
+            $atts = fetchAll($pdo, "SELECT file_path FROM daily_work_attachments WHERE work_id = ?", [$taskId]);
+            foreach($atts as $a) {
+                $filePath = UPLOADS_PATH . 'daily_work/' . $a['file_path'];
+                if (file_exists($filePath)) @unlink($filePath);
+            }
+            $pdo->prepare("DELETE FROM daily_work_attachments WHERE work_id = ?")->execute([$taskId]);
+            $pdo->prepare("DELETE FROM work_assignments WHERE id = ?")->execute([$taskId]);
+            
+            $_SESSION['status_message'] = '<div class="alert alert-success">Entry and its attachments deleted.</div>';
+            $pageRedirect = 'my_daily_entries';
             break;
 
         case 'update_task':
@@ -803,7 +972,7 @@ try {
             $stmt = $pdo->prepare("INSERT INTO appointments (client_name, client_phone, client_email, category_id, user_id, appointment_date, appointment_time, notes, document_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$_POST['client_name'], $_POST['client_phone'], $_POST['client_email'], $_POST['category_id'], $_POST['user_id'], $_POST['appointment_date'], $_POST['appointment_time'], $_POST['notes'], $docPath]);
             $_SESSION['status_message'] = '<div class="alert alert-success appointment-toast-message">Appointment booked successfully! We will contact you soon.</div>';
-            $pageRedirect = 'login';
+            $pageRedirect = $_POST['page'] ?? 'login';
             $redirectParams = '&appointment_success=1';
             
             $appointment_id = $pdo->lastInsertId();
@@ -1100,6 +1269,33 @@ try {
             $pageRedirect = 'digital_drafts';
             break;
 
+        case 'ajax_add_customer':
+            $name = trim($_POST['customer_name']);
+            $phone = trim($_POST['customer_phone']);
+            $email = trim($_POST['customer_email'] ?? '');
+            $address = trim($_POST['customer_address'] ?? '');
+            $clientId = !empty($_POST['client_id']) ? (int)$_POST['client_id'] : null;
+
+            if (empty($name) || empty($phone)) {
+                echo json_encode(['status' => 'error', 'message' => 'Name and Phone are required.']);
+                exit;
+            }
+
+            try {
+                $stmt = $pdo->prepare("INSERT INTO customers (customer_name, customer_phone, customer_email, customer_address, client_id) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$name, $phone, $email, $address, $clientId]);
+                $newId = $pdo->lastInsertId();
+                echo json_encode([
+                    'status' => 'success',
+                    'id' => $newId,
+                    'name' => $name,
+                    'client_id' => $clientId
+                ]);
+            } catch (Exception $e) {
+                echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+            }
+            exit;
+
         default:
             $_SESSION['status_message'] = '<div class="alert alert-warning">Unknown Action: ' . htmlspecialchars($action) . '</div>';
             break;
@@ -1178,6 +1374,50 @@ try {
             // User gets redirected to their dashboard or the same page
             $pageRedirect = isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], ['retailer', 'freelancer', 'deo']) ? 'retailer_dashboard' : 'buy_subscription';
             break;
+
+        case 'buy_points':
+            $user_id = $_SESSION['user_id'];
+            $points_to_buy = 25;
+            $cost = 100.00;
+            
+            $user = fetchOne($pdo, "SELECT balance, poster_points FROM users WHERE id = ?", [$user_id]);
+            if (!$user) {
+                $_SESSION['status_message'] = '<div class="alert alert-danger">User not found.</div>';
+                $pageRedirect = 'wallet_recharge';
+                break;
+            }
+            
+            if ($user['balance'] < $cost) {
+                $_SESSION['status_message'] = '<div class="alert alert-danger">Insufficient balance! You need ₹' . $cost . ' to buy ' . $points_to_buy . ' points.</div>';
+                $pageRedirect = 'wallet_recharge';
+                break;
+            }
+            
+            $pdo->beginTransaction();
+            try {
+                // Deduct balance
+                $pdo->prepare("UPDATE users SET balance = balance - ? WHERE id = ?")->execute([$cost, $user_id]);
+                // Add points
+                $pdo->prepare("UPDATE users SET poster_points = poster_points + ? WHERE id = ?")->execute([$points_to_buy, $user_id]);
+                
+                // Log transaction
+                $pdo->prepare("INSERT INTO wallet_transactions (user_id, type, amount, description) VALUES (?, 'debit', ?, ?)")
+                    ->execute([$user_id, $cost, "Purchased $points_to_buy Points for ₹$cost"]);
+                
+                $pdo->commit();
+                
+                // Update session
+                $_SESSION['wallet_balance'] = (float)$user['balance'] - $cost;
+                $_SESSION['poster_points'] = (int)($user['poster_points'] ?? 0) + $points_to_buy;
+                
+                $_SESSION['status_message'] = '<div class="alert alert-success">🎉 Success! ' . $points_to_buy . ' Points have been added to your account.</div>';
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['status_message'] = '<div class="alert alert-danger">Error: ' . $e->getMessage() . '</div>';
+            }
+            $pageRedirect = 'wallet_recharge';
+            break;
+
 
 	// =======================================================
     // 🚀 WALLET RECHARGE SYSTEM LOGIC 🚀
@@ -1318,6 +1558,47 @@ try {
             $pdo->prepare("DELETE FROM b2c_sliders WHERE id = ?")->execute([$sliderId]);
             $_SESSION['status_message'] = '<div class="alert alert-success">Slider deleted!</div>';
             $pageRedirect = 'manage_b2c_sliders';
+            break;
+
+        // ==========================================
+        // NOTICE BOARD ACTIONS
+        // ==========================================
+        case 'add_notice':
+            if (!in_array($_SESSION['user_role'] ?? '', ['admin', 'master_admin'])) throw new Exception('Access Denied.');
+            $title = trim($_POST['title'] ?? '');
+            $msg = trim($_POST['message'] ?? '');
+            $type = $_POST['target_type'] ?? 'all';
+            $userId = ($type === 'specific' && !empty($_POST['target_user_id'])) ? (int)$_POST['target_user_id'] : null;
+            
+            if (createNotice($title, $msg, $type, $userId, $currentUserId)) {
+                $_SESSION['status_message'] = '<div class="alert alert-success bg-gradient text-white border-0 shadow-sm"><i class="fas fa-check-circle me-1"></i> Notice posted successfully!</div>';
+            } else {
+                throw new Exception("Error posting notice.");
+            }
+            $pageRedirect = 'manage_notices';
+            break;
+
+        case 'delete_notice':
+            if (!in_array($_SESSION['user_role'] ?? '', ['admin', 'master_admin'])) throw new Exception('Access Denied.');
+            $id = (int)($_POST['id'] ?? 0);
+            if (deleteNotice($id)) {
+                $_SESSION['status_message'] = '<div class="alert alert-success border-0 shadow-sm"><i class="fas fa-trash me-1"></i> Notice deleted.</div>';
+            } else {
+                throw new Exception("Error deleting notice.");
+            }
+            $pageRedirect = 'manage_notices';
+            break;
+
+        case 'toggle_notice_status':
+            if (!in_array($_SESSION['user_role'] ?? '', ['admin', 'master_admin'])) throw new Exception('Access Denied.');
+            $id = (int)($_POST['id'] ?? 0);
+            $status = (int)($_POST['status'] ?? 0);
+            if (toggleNoticeStatus($id, $status)) {
+                $_SESSION['status_message'] = '<div class="alert alert-success border-0 shadow-sm">Notice status updated.</div>';
+            } else {
+                throw new Exception("Error updating notice status.");
+            }
+            $pageRedirect = 'manage_notices';
             break;
 
     } // end switch

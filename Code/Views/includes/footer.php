@@ -32,16 +32,20 @@
         </div>
 
         <script>
-            // --- 1. CLOCK LOGIC ---
+            // --- 1. CLOCK LOGIC (FIXED FOR INDIA TIMELINE) ---
             function updateClock() {
                 const now = new Date();
-                const timeString = now.toLocaleTimeString('en-US', { 
+                // Calculate IST (UTC + 5:30)
+                const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                const ist = new Date(utc + (3600000 * 5.5));
+                
+                const timeString = ist.toLocaleTimeString('en-IN', { 
                     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true 
                 });
                 
                 // Desktop Clock
                 const deskClock = document.getElementById('headerClock');
-                if(deskClock) deskClock.innerHTML = '<i class="far fa-clock"></i> ' + timeString;
+                if(deskClock) deskClock.innerHTML = '<i class="far fa-clock"></i> ' + timeString + ' (IST)';
 
                 // Mobile Clock
                 const mobClock = document.getElementById('mobileClockText');
@@ -86,7 +90,7 @@
 
             function checkNotifications() {
                 // Call API
-                fetch('app/chat_api.php?action=get_total_unread')
+                fetch('<?= APP_URL ?>chat_api.php?action=get_total_unread')
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
@@ -142,7 +146,7 @@
         		<script>
 // Global Polling for Unread Messages in Sidebar
 setInterval(function() {
-    fetch('app/chat_api.php?action=check_unread')
+    fetch('<?= APP_URL ?>chat_api.php?action=check_unread')
     .then(res => res.json())
     .then(data => {
         const badge = document.getElementById('sidebar-msg-badge'); // one in the sidebar <span> Put with this id

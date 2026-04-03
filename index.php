@@ -122,7 +122,7 @@ $publicPages = [
     'poster_studio', 'resume_builder', 'smart_card', 'passport_photo',
     'document_converter', 'size_converter', 'photo_studio',
     'public_appointment_form', 'logout', 'privacy_policy', 'terms_of_service', 'buy_subscription',
-    'about_us', 'contact_us', 'services', 'print_bill'
+    'about_us', 'contact_us', 'services', 'print_bill', 'appointment'
 ];
 $requestedPage = $_GET['page'] ?? 'b2c_home';
 
@@ -136,12 +136,15 @@ $pageToFileMap = [
     'users' => ADMIN_USERS_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'users/users.php'),
     'edit_user' => ADMIN_EDIT_USER_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'users/edit_user.php'),
     'manage_roles' => ADMIN_MANAGE_ROLES_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'users/manage_roles.php'), 
+    'manage_notices' => ADMIN_VIEWS_PATH . 'notices/manage_notices.php',
     'clients' => USER_VIEWS_PATH . 'clients/clients.php',
     'customers' => VIEWS_PATH . 'customers.php', 
     'categories' => ADMIN_CATEGORIES_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'categories/categories.php'),
     'assign_task' => ADMIN_ASSIGN_TASK_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'tasks/assign_task.php'), 
     'all_tasks' => ADMIN_ALL_TASKS_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'tasks/all_tasks.php'),
     'edit_task' => ADMIN_EDIT_TASK_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'tasks/edit_task.php'), 
+    'daily_work_entry' => ADMIN_VIEWS_PATH . 'tasks/daily_work_entry.php',
+    'my_daily_entries' => ADMIN_VIEWS_PATH . 'tasks/my_daily_entries.php',
     'expenses' => ADMIN_EXPENSES_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'finance/expenses.php'),
     'reports' => ADMIN_REPORTS_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'reports/reports.php'), 
     'settings' => ADMIN_SETTINGS_PAGE_PATH ?? (ADMIN_VIEWS_PATH . 'settings/settings.php'),
@@ -208,6 +211,7 @@ $pageToFileMap = [
     'photo_studio' => DIGITAL_SERVICES_PATH . 'photo_studio.php',
     'digital_service_history' => DIGITAL_SERVICES_PATH . 'digital_service_history.php',
     'digital_drafts' => DIGITAL_SERVICES_PATH . 'digital_drafts.php',
+    'digital_services' => VIEWS_PATH . 'digital_services.php',
     
     // --- 7. PUBLIC LEGAL POLICIES & CMS ---
     'privacy_policy' => VIEWS_PATH . 'privacy_policy.php',
@@ -225,6 +229,7 @@ $pageToFileMap = [
     'services' => VIEWS_PATH . 'services.php',
     'logout' => VIEWS_PATH . 'logout.php',
     'public_appointment_form' => VIEWS_PATH . 'public_appointment_form.php',
+    'appointment' => VIEWS_PATH . 'appointment.php',
     'print_bill' => VIEWS_PATH . 'print_bill.php'
 ];
 
@@ -238,10 +243,14 @@ if ($requestedPage === 'logout') {
 // public page (which can be accessed without login)
 if (in_array($requestedPage, $publicPages)) {
     if ($is_logged_in && $requestedPage === 'login') {
-        $role = $_SESSION['user_role'] ?? 'guest';
+        $role = strtolower($_SESSION['user_role'] ?? 'guest');
         $dashboard_page = 'user_dashboard';
         
-        if (in_array($role, ['master_admin', 'admin'])) $dashboard_page = 'master_dashboard';
+        if ($role === 'master_admin') $dashboard_page = 'master_dashboard';
+        elseif ($role === 'admin') $dashboard_page = 'dashboard';
+        elseif ($role === 'retailer') $dashboard_page = 'retailer_dashboard';
+        elseif ($role === 'district_manager') $dashboard_page = 'district_manager_dashboard';
+        elseif ($role === 'super_admin') $dashboard_page = 'super_admin_dashboard';
         elseif ($role === 'hr') $dashboard_page = 'hr_dashboard';
         elseif ($role === 'accountant') $dashboard_page = 'accountant_dashboard';
         elseif (in_array($role, ['deo', 'freelancer', 'data_entry_operator'])) $dashboard_page = 'worker_dashboard';
@@ -262,7 +271,7 @@ if (in_array($requestedPage, $publicPages)) {
     // --- DYNAMIC DASHBOARD ROUTING FIX ---
     if ($requestedPage === 'dashboard') {
         $perms = $_SESSION['user_permissions'] ?? [];
-        $role = $_SESSION['user_role'] ?? 'guest';
+        $role = strtolower($_SESSION['user_role'] ?? 'guest');
 
         if (in_array('master_dashboard', $perms) || in_array($role, ['admin', 'master_admin'])) {
             $requestedPage = 'dashboard';
@@ -291,7 +300,7 @@ if (in_array($requestedPage, $publicPages)) {
         $canAccess = false;
         
         // 1. Safe Dashboards & Common Pages (No Infinite Loop)
-        $safe_pages = ['dashboard', 'master_dashboard', 'user_dashboard', 'hr_dashboard', 'accountant_dashboard', 'worker_dashboard', 'user_settings', 'messages', 'buy_subscription', 'create_task_from_appointment', 'digital_service_history', 'digital_drafts'];
+        $safe_pages = ['dashboard', 'master_dashboard', 'user_dashboard', 'hr_dashboard', 'accountant_dashboard', 'worker_dashboard', 'user_settings', 'messages', 'buy_subscription', 'create_task_from_appointment', 'digital_service_history', 'digital_drafts', 'digital_services', 'daily_work_entry', 'my_daily_entries'];
         if (in_array($requestedPage, $safe_pages)) {
             $canAccess = true;
         }

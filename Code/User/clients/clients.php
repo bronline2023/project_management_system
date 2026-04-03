@@ -10,51 +10,41 @@
  */
 
 // Include the configuration file for database connection and session management.
-require_once __DIR__ . '/../../config.php';
+require_once __DIR__ . '/../../../config.php';
 require_once MODELS_PATH . 'db.php';   // Database interaction functions
 require_once MODELS_PATH . 'auth.php'; // Authentication functions
 
-// Restrict access to admin users only.
-// If the user is not logged in or not an admin, redirect them.
-if (!isLoggedIn() || $_SESSION['user_role'] !== 'admin') {
+// Restrict access to admin and accountant users.
+if (!isLoggedIn() || !in_array($_SESSION['user_role'], ['admin', 'accountant'])) {
     header('Location: ' . BASE_URL . '?page=login');
     exit;
 }
 
-$pdo = connectDB(); // Establish database connection
-$message = ''; // To store success or error messages
+// Establish database connection
+$pdo = connectDB(); 
+$message = ''; 
 
 // --- Handle Client Actions (Add, Edit, Delete) ---
 
 // Handle Add Client
 if (isset($_POST['add_client'])) {
     $name = trim($_POST['name']);
-    $email = trim($_POST['email'] ?? ''); // Make optional
-    $phone = trim($_POST['phone'] ?? ''); // Make optional
-    $address = trim($_POST['address'] ?? ''); // Make optional
-    $contact_person = trim($_POST['contact_person'] ?? ''); // New optional field
-    $company = trim($_POST['company'] ?? ''); // New optional field
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $contact_person = trim($_POST['contact_person'] ?? '');
+    $company = trim($_POST['company'] ?? '');
 
-    // Basic validation: Client Name is still required
     if (empty($name)) {
         $message = '<div class="alert alert-danger" role="alert">Client Name is required.</div>';
-    } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $message = '<div class="alert alert-danger" role="alert">Invalid email format.</div>';
     } else {
         try {
-            // Updated INSERT statement to include new columns
-            $stmt = $pdo->prepare("INSERT INTO clients (name, email, phone, address, contact_person, company) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt = $pdo->prepare("INSERT INTO clients (client_name, email, phone, address, contact_person, company) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->execute([$name, $email, $phone, $address, $contact_person, $company]);
             $message = '<div class="alert alert-success" role="alert">Client added successfully!</div>';
-            // Clear form fields after successful submission (optional, for UX)
             $_POST = array();
         } catch (PDOException $e) {
-            if ($e->getCode() == 23000) { // SQLSTATE for integrity constraint violation (e.g., duplicate email)
-                $message = '<div class="alert alert-danger" role="alert">Error: Client with this email already exists.</div>';
-            } else {
-                error_log("Error adding client: " . $e->getMessage());
-                $message = '<div class="alert alert-danger" role="alert">Error adding client: ' . $e->getMessage() . '</div>';
-            }
+            $message = '<div class="alert alert-danger" role="alert">Error adding client: ' . $e->getMessage() . '</div>';
         }
     }
 }
@@ -63,30 +53,21 @@ if (isset($_POST['add_client'])) {
 if (isset($_POST['edit_client'])) {
     $id = $_POST['client_id'];
     $name = trim($_POST['name']);
-    $email = trim($_POST['email'] ?? ''); // Make optional
-    $phone = trim($_POST['phone'] ?? ''); // Make optional
-    $address = trim($_POST['address'] ?? ''); // Make optional
-    $contact_person = trim($_POST['contact_person'] ?? ''); // New optional field
-    $company = trim($_POST['company'] ?? ''); // New optional field
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $contact_person = trim($_POST['contact_person'] ?? '');
+    $company = trim($_POST['company'] ?? '');
 
-    // Basic validation: Client Name is still required for editing
     if (empty($id) || empty($name)) {
         $message = '<div class="alert alert-danger" role="alert">Client Name is required for editing.</div>';
-    } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $message = '<div class="alert alert-danger" role="alert">Invalid email format for editing.</div>';
     } else {
         try {
-            // Updated UPDATE statement to include new columns
-            $stmt = $pdo->prepare("UPDATE clients SET name = ?, email = ?, phone = ?, address = ?, contact_person = ?, company = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE clients SET client_name = ?, email = ?, phone = ?, address = ?, contact_person = ?, company = ? WHERE id = ?");
             $stmt->execute([$name, $email, $phone, $address, $contact_person, $company, $id]);
             $message = '<div class="alert alert-success" role="alert">Client updated successfully!</div>';
         } catch (PDOException $e) {
-            if ($e->getCode() == 23000) {
-                $message = '<div class="alert alert-danger" role="alert">Error: Client with this email already exists.</div>';
-            } else {
-                error_log("Error updating client: " . $e->getMessage());
-                $message = '<div class="alert alert-danger" role="alert">Error updating client: ' . $e->getMessage() . '</div>';
-            }
+            $message = '<div class="alert alert-danger" role="alert">Error updating client: ' . $e->getMessage() . '</div>';
         }
     }
 }
@@ -99,45 +80,37 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
         $stmt->execute([$id]);
         $message = '<div class="alert alert-success" role="alert">Client deleted successfully!</div>';
     } catch (PDOException $e) {
-        error_log("Error deleting client: " . $e->getMessage());
-        $message = '<div class="alert alert-danger" role="alert">Error deleting client. Make sure no work assignments are associated with this client.</div>';
+        $message = '<div class="alert alert-danger" role="alert">Error deleting client.</div>';
     }
 }
 
-// --- Fetch All Clients for Display ---
+// --- Fetch All Clients ---
 $clients = [];
 try {
-    // Updated SELECT statement to include new columns
-    $stmt = $pdo->query("SELECT id, name, email, phone, address, contact_person, company, created_at FROM clients ORDER BY name ASC");
+    $stmt = $pdo->query("SELECT id, client_name, email, phone, address, contact_person, company, created_at FROM clients ORDER BY client_name ASC");
     $clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    error_log("Error fetching clients: " . $e->getMessage());
     $message .= '<div class="alert alert-danger" role="alert">Error loading clients.</div>';
 }
-
-// Include the header (contains HTML <head> and initial Bootstrap/CSS)
-include INCLUDES_PATH . 'header.php';
 ?>
 
-<div class="wrapper d-flex">
-    <?php include INCLUDES_PATH . 'sidebar.php'; // Include the sidebar for navigation ?>
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-dark"><i class="fas fa-address-book me-2 text-primary"></i>Client Management</h2>
+    </div>
 
-    <div id="content" class="p-4 p-md-5 pt-5 w-100">
-        <h2 class="mb-4">Client Management</h2>
-
-        <?php if (!empty($message)): ?>
-            <?php include VIEWS_PATH . 'components/message_box.php'; // Custom message box ?>
-            <script>
-                // Auto-hide the message after 5 seconds
-                setTimeout(function() {
-                    const alert = document.querySelector('.alert');
-                    if (alert) {
-                        alert.classList.add('fade-out');
-                        setTimeout(() => alert.remove(), 500); // Remove after fade-out
-                    }
-                }, 5000);
-            </script>
-        <?php endif; ?>
+    <?php if (!empty($message)): ?>
+        <?php include VIEWS_PATH . 'components/message_box.php'; ?>
+        <script>
+            setTimeout(function() {
+                const alert = document.querySelector('.alert');
+                if (alert) {
+                    alert.classList.add('fade-out');
+                    setTimeout(() => alert.remove(), 500);
+                }
+            }, 5000);
+        </script>
+    <?php endif; ?>
 
         <!-- Add New Client Form -->
         <div class="card shadow-sm rounded-3 mb-4">
@@ -207,7 +180,7 @@ include INCLUDES_PATH . 'header.php';
                                 <?php foreach ($clients as $client): ?>
                                     <tr>
                                         <td><?= htmlspecialchars($client['id']) ?></td>
-                                        <td><?= htmlspecialchars($client['name']) ?></td>
+                                        <td><?= htmlspecialchars($client['client_name']) ?></td>
                                         <td><?= htmlspecialchars($client['contact_person']) ?></td>
                                         <td><?= htmlspecialchars($client['email']) ?></td>
                                         <td><?= htmlspecialchars($client['phone']) ?></td>
@@ -218,7 +191,7 @@ include INCLUDES_PATH . 'header.php';
                                             <button type="button" class="btn btn-sm btn-outline-primary rounded-pill me-1"
                                                     data-bs-toggle="modal" data-bs-target="#editClientModal"
                                                     data-id="<?= htmlspecialchars($client['id']) ?>"
-                                                    data-name="<?= htmlspecialchars($client['name']) ?>"
+                                                    data-name="<?= htmlspecialchars($client['client_name']) ?>"
                                                     data-contact-person="<?= htmlspecialchars($client['contact_person']) ?>"
                                                     data-email="<?= htmlspecialchars($client['email']) ?>"
                                                     data-phone="<?= htmlspecialchars($client['phone']) ?>"
@@ -227,7 +200,7 @@ include INCLUDES_PATH . 'header.php';
                                                 <i class="fas fa-edit"></i> Edit
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-danger rounded-pill"
-                                                    onclick="showCustomConfirm('Delete Client', 'Are you sure you want to delete client: <?= htmlspecialchars($client['name']) ?>?', '<?= BASE_URL ?>?page=clients&action=delete&id=<?= htmlspecialchars($client['id']) ?>')">
+                                                    onclick="showCustomConfirm('Delete Client', 'Are you sure you want to delete client: <?= htmlspecialchars($client['client_name']) ?>?', '<?= BASE_URL ?>?page=clients&action=delete&id=<?= htmlspecialchars($client['id']) ?>')">
                                                 <i class="fas fa-trash-alt"></i> Delete
                                             </button>
                                         </td>
@@ -311,7 +284,6 @@ include INCLUDES_PATH . 'header.php';
     </div>
 </div>
 
-<?php include INCLUDES_PATH . 'footer.php'; // Include the footer ?>
 
 <script>
     // JavaScript to populate the edit client modal when the edit button is clicked

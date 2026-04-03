@@ -1,32 +1,46 @@
 <?php
-require_once CORE_INCLUDES_PATH . 'service_paywall.php';
-enforce_service_paywall('passport_photo');
-
+// Smart Checkout integrated
 /**
  * views/passport_photo.php
  * ULTIMATE PRO STUDIO: Pre-configured Native AI, Perfect Borders, Drag & Drop Name, Smooth Touch
  */
 
 $pdo = connectDB();
-$card_cost = 10.00; 
 $currency = '₹';
 $user_role = $_SESSION['user_role'] ?? 'guest';
 
+$service_rate = 2.00;
+$points_rate = 0;
+$user_balance = 0.00;
+$user_points = 0;
+$is_custom_rate = false;
+$custom_poster_rate = 0.00;
+$sub = false;
+
 try {
-    $stmt = $pdo->query("SELECT poster_generation_cost, currency_symbol FROM settings LIMIT 1");
-    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($settings) {
-        $card_cost = isset($settings['poster_generation_cost']) ? (float)$settings['poster_generation_cost'] : 10.00;
-        $currency = isset($settings['currency_symbol']) ? $settings['currency_symbol'] : '₹';
+    $stmt_rate = $pdo->prepare("SELECT price, points_price FROM digital_service_rates WHERE service_slug = 'passport_photo' AND is_active = 1");
+    $stmt_rate->execute();
+    $rate_data = $stmt_rate->fetch();
+    if ($rate_data) {
+        $service_rate = (float)$rate_data['price'];
+        $points_rate = (int)$rate_data['points_price'];
     }
 
+    $stmt = $pdo->query("SELECT currency_symbol FROM settings LIMIT 1");
+    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($settings && isset($settings['currency_symbol'])) { $currency = $settings['currency_symbol']; }
+
     if (isset($_SESSION['user_id'])) {
-        $stmt_user = $pdo->prepare("SELECT custom_poster_rate FROM users WHERE id = ?");
+        $stmt_user = $pdo->prepare("SELECT balance, poster_points, custom_poster_rate FROM users WHERE id = ?");
         $stmt_user->execute([$_SESSION['user_id']]);
         $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
-        
-        if ($user_data && isset($user_data['custom_poster_rate']) && $user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
-            $card_cost = (float)$user_data['custom_poster_rate'];
+        if ($user_data) {
+            $user_balance = (float)$user_data['balance'];
+            $user_points = (int)$user_data['poster_points'];
+            if ($user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
+                $custom_poster_rate = (float)$user_data['custom_poster_rate'];
+                $is_custom_rate = true;
+            }
         }
         
         $sub_stmt = $pdo->prepare("SELECT id FROM user_subscriptions WHERE user_id = ? AND status = 'active' AND end_date >= NOW()");
@@ -61,17 +75,19 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digital Studio</title>
+    <link rel="icon" type="image/png" href="<?= ASSETS_URL ?>img/br_favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/imgly-background-removal.js"></script>
+<!-- Cache-Busting Build: <?= APP_VERSION ?> -->
 
 <style>
     @media print {
         body * { visibility: hidden !important; }
-        .workspace, .workspace canvas, .canvas-container { visibility: visible !important; }
+        .workspace, .workspace canvas, .studio-canvas-layout { visibility: visible !important; }
         .workspace { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; margin: 0; padding: 0; overflow: visible !important; }
         .studio-panel, .sys-zoom-controls { display: none !important; }
     }
@@ -133,7 +149,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         .studio-wrapper, .builder-wrapper { flex-direction: column !important; height: auto !important; width: 100vw !important; overflow-x: hidden; }
         .studio-panel { width: 100% !important; min-width: 100% !important; height: auto !important; max-height: 55vh; overflow-y: auto; border-right: none !important; border-bottom: 2px solid #cbd5e1; }
         .workspace { width: 100% !important; height: 45vh !important; min-height: 45vh !important; padding: 10px !important; overflow-y: auto; }
-        .canvas-container { max-width: 100% !important; height: auto !important; margin: 0 auto; }
+        .studio-canvas-layout { max-width: 100% !important; height: auto !important; margin: 0 auto; }
         canvas { max-width: 100% !important; height: auto !important; }
         .a4-page, .card-preview { max-width: 100%; transform: scale(0.65) !important; transform-origin: top center !important; margin-bottom: 0 !important; }
         .mobile-gap { margin-bottom: 60px; }
@@ -278,7 +294,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 
         <div class="action-btns" id="downloadBlock" style="display:none;">
             <div class="d-flex gap-2 mb-2" style="display: flex; gap: 10px;">
-                <button class="btn-export w-100" style="flex:1" onclick="handleExport()"><i class="fas fa-download"></i> Download HD <?= (!isset($_SESSION['user_id']) && isset($_COOKIE['guest_service_used'])) ? '' : '('.$currency.$card_cost.')' ?></button>
+                <button class="btn-export w-100" style="flex:1" onclick="handleExport()"><i class="fas fa-download"></i> Download HD <?= (!isset($_SESSION['user_id']) && isset($_COOKIE['guest_service_used'])) ? '' : '('.$currency.$service_rate.')' ?></button>
                 <?php if(isset($sub) && $sub): ?>
                 <button class="btn btn-primary fw-bold text-white px-4 border-0 rounded-3 shadow-sm" onclick="handlePrint()" style="background: linear-gradient(135deg, #0ea5e9, #2563eb); border-radius: 6px; border:none; color:white; padding: 0 20px;"><i class="fas fa-print"></i></button>
                 <?php else: ?>
@@ -301,26 +317,43 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     </div>
 
     <div class="workspace" id="workspaceContainer">
-    <div class="sys-zoom-controls">
-        <div style="font-size: 10px; font-weight: bold; color: #64748b; text-align: center; margin-bottom: 2px;">ZOOM</div>
-        <button type="button" class="sys-zoom-btn" onclick="sysChangeZoom(0.1)" title="Zoom In"><i class="fas fa-plus"></i></button>
-        <button type="button" class="sys-zoom-btn" onclick="sysResetZoom()" style="font-size: 11px;">100%</button>
-        <button type="button" class="sys-zoom-btn" onclick="sysChangeZoom(-0.1)" title="Zoom Out"><i class="fas fa-minus"></i></button>
-    </div>
         <div id="loadingOverlay">
             <div class="spinner"></div>
-            <div id="loadingText" style="margin-top: 10px; line-height: 1.5;">Processing Image...</div>
+            <div id="loadingText">Processing...</div>
         </div>
-        <canvas id="mainCanvas"></canvas>
+        
+        <div id="canvasWrapper" class="studio-canvas-layout" style="background: white; box-shadow: 0 0 50px rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden;">
+            <canvas id="mainCanvas"></canvas>
+        </div>
     </div>
 </div>
 
 <script>
     const userRole = "<?= $_SESSION['user_role'] ?? 'guest' ?>";
-    const cardCost = <?= number_format($card_cost, 2, '.', '') ?>;
+    const serviceRate = <?= $service_rate ?>;
+    const pointsRate = <?= $points_rate ?>;
+    const userBalance = <?= $user_balance ?>;
+    const userPoints = <?= $user_points ?>;
+    const isCustomRate = <?= $is_custom_rate ? 'true' : 'false' ?>;
+    const customRate = <?= $custom_poster_rate ?>;
+    const cardCost = serviceRate; 
     const currency = "<?= $currency ?>";
     const baseUrl = "<?= BASE_URL ?>"; 
     const APP_URL = "<?= APP_URL ?>";
+
+    // --- UI UTILITIES ---
+    function showLoading(show, text = "Processing... Please wait.") {
+        const el = document.getElementById('loadingOverlay');
+        const txt = document.getElementById('loadingText');
+        if (el) el.style.display = show ? 'flex' : 'none';
+        if (txt && text) txt.innerText = text;
+    }
+    const hideLoader = () => showLoading(false);
+    const showLoader = (text) => showLoading(true, text);
+
+    function forceSyncAll() {
+        if(typeof syncUIFromCurrentCanvas === 'function') syncUIFromCurrentCanvas();
+    }
 
     let canvas;
     function saveDraft() {
@@ -343,14 +376,14 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('✅ Draft saved successfully! Find it in "Saved Drafts" in the sidebar.');
+                Swal.fire({ icon: 'success', title: 'Saved!', text: 'Draft saved successfully! Find it in "Saved Drafts" in the sidebar.' });
             } else {
-                alert('❌ Error: ' + (data.error || 'Unknown error'));
+                Swal.fire({ icon: 'error', title: 'Error', text: (data.error || 'Unknown error') });
             }
         })
         .catch(err => {
             console.error(err);
-            alert('❌ Network Error: Could not save draft.');
+            Swal.fire({ icon: 'error', title: 'Network Error', text: 'Could not save draft.' });
         })
         .finally(() => {
             btn.innerHTML = originalHtml;
@@ -404,7 +437,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             } catch (err) {
                 console.error("Passport Maker Draft Load Error:", err);
                 showLoading(false);
-                alert("❌ Failed to restore draft.");
+                Swal.fire({ icon: 'error', title: 'Load Error', text: 'Failed to restore draft.' });
             }
         }
 
@@ -557,46 +590,45 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if(!originalImageObj || !cropBox.visible) return;
         showLoading(true, "Cropping process is in progress...");
 
-        setTimeout(() => {
-            cropBox.set('visible', false); 
+        // Removed artificial timeout
+        cropBox.set('visible', false); 
+        canvas.renderAll();
+
+        const cropRect = cropBox.getBoundingRect();
+        originalDataUrlForAI = canvas.toDataURL({
+            format: 'png', left: cropRect.left, top: cropRect.top,
+            width: cropRect.width, height: cropRect.height, multiplier: 2 // Optimized from 4 to 2 (still HQ)
+        });
+
+        canvas.clear();
+        document.getElementById('step1Controls').style.display = 'none';
+        document.getElementById('step2Controls').style.display = 'block';
+
+        fabric.Image.fromURL(originalDataUrlForAI, function(img) {
+            const dispHeight = 350;
+            const scaleDisplay = dispHeight / img.height;
+            
+            img.set({
+                originX: 'center', originY: 'center',
+                left: canvas.width / 2, top: canvas.height / 2,
+                scaleX: scaleDisplay, scaleY: scaleDisplay,
+                selectable: false, evented: false
+            });
+            
+            croppedImageObj = img;
+            
+            // Pure Smooth Filters
+            croppedImageObj.filters = [
+                new fabric.Image.filters.Brightness({ brightness: 0 }),
+                new fabric.Image.filters.Contrast({ contrast: 0 }),
+                new fabric.Image.filters.Saturation({ saturation: 0 })
+            ];
+
+            canvas.add(img);
+            changeBackground(); 
             canvas.renderAll();
-
-            const cropRect = cropBox.getBoundingRect();
-            originalDataUrlForAI = canvas.toDataURL({
-                format: 'png', left: cropRect.left, top: cropRect.top,
-                width: cropRect.width, height: cropRect.height, multiplier: 4 // HD Extraction
-            });
-
-            canvas.clear();
-            document.getElementById('step1Controls').style.display = 'none';
-            document.getElementById('step2Controls').style.display = 'block';
-
-            fabric.Image.fromURL(originalDataUrlForAI, function(img) {
-                const dispHeight = 350;
-                const scaleDisplay = dispHeight / img.height;
-                
-                img.set({
-                    originX: 'center', originY: 'center',
-                    left: canvas.width / 2, top: canvas.height / 2,
-                    scaleX: scaleDisplay, scaleY: scaleDisplay,
-                    selectable: false, evented: false
-                });
-                
-                croppedImageObj = img;
-                
-                // Pure Smooth Filters
-                croppedImageObj.filters = [
-                    new fabric.Image.filters.Brightness({ brightness: 0 }),
-                    new fabric.Image.filters.Contrast({ contrast: 0 }),
-                    new fabric.Image.filters.Saturation({ saturation: 0 })
-                ];
-
-                canvas.add(img);
-                changeBackground(); 
-                canvas.renderAll();
-                showLoading(false);
-            });
-        }, 100);
+            showLoading(false);
+        });
     }
 
     // ==========================================
@@ -934,27 +966,26 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if(!croppedImageObj) return;
         showLoading(true, "Preparing printing paper...");
 
-        // Deselect text box so selection boundaries don't show up in print
+        // Deselect text box
         canvas.discardActiveObject();
         canvas.renderAll();
 
-        setTimeout(() => {
-            const bounds = croppedImageObj.getBoundingRect();
-            
-            finalHDCardDataUrl = canvas.toDataURL({
-                format: 'jpeg', quality: 1.0,
-                left: bounds.left, top: bounds.top,
-                width: bounds.width, height: bounds.height,
-                multiplier: 4 // HD Extractor
-            });
+        // Removed artificial timeout
+        const bounds = croppedImageObj.getBoundingRect();
+        
+        finalHDCardDataUrl = canvas.toDataURL({
+            format: 'jpeg', quality: 1.0,
+            left: bounds.left, top: bounds.top,
+            width: bounds.width, height: bounds.height,
+            multiplier: 3 // Optimized from 4 to 3
+        });
 
-            document.getElementById('step2Controls').style.display = 'none';
-            document.getElementById('step3Controls').style.display = 'block';
-            document.getElementById('downloadBlock').style.display = 'block';
-            
-            generateGrid();
-            showLoading(false);
-        }, 100);
+        document.getElementById('step2Controls').style.display = 'none';
+        document.getElementById('step3Controls').style.display = 'block';
+        document.getElementById('downloadBlock').style.display = 'block';
+        
+        generateGrid();
+        showLoading(false);
     }
 
     function generateGrid() {
@@ -1030,31 +1061,110 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     // ==========================================
     // 🚀 EXPORT & API DEDUCTION 🚀
     // ==========================================
+    // Removed duplicate definitions
+
     async function handleExport() {
-        if (userRole !== 'admin') {
-            let confirmMsg = `${currency}${cardCost} will be deducted from the wallet to download the final print sheet.\nDo you want to proceed?`;
-            if (!confirm(confirmMsg)) return; 
+
+        async function processFinalDownload() {
+            showLoading(true, "Finalizing Output...");
+            // Removed artificial 800ms delay
+            const currentZoom = canvas.getZoom();
+            canvas.setZoom(1); canvas.setWidth(A4_W_PX); canvas.setHeight(A4_H_PX);
+            const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1.0, multiplier: 2 });
+            canvas.setZoom(currentZoom); fitCanvas();
+            const link = document.createElement('a'); link.download = `Passport_Collection_${Date.now()}.jpg`; link.href = dataUrl; link.click();
+            showLoading(false);
+        }
+
+        if (!isGuest && userRole !== 'admin' && userRole !== 'master_admin') {
+            let actualCost = serviceRate;
+            let willUsePoints = false;
+            
+            if (actualCost <= 0) {
+                 willUsePoints = false;
+            } 
+            else if (userBalance >= actualCost) {
+                const result = await Swal.fire({
+                    title: 'Confirm Purchase',
+                    text: `${currency}${actualCost} will be deducted from your wallet to download the final image.`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Deduct & Download',
+                    cancelButtonText: 'No, Cancel'
+                });
+                if (!result.isConfirmed) return;
+            } 
+            else if (pointsRate > 0 && userPoints >= pointsRate) {
+                const result = await Swal.fire({
+                    title: 'Use Points?',
+                    text: `You don't have enough Wallet Balance, but you have ${userPoints} Points. ${pointsRate} Points will be deducted to run this task.`,
+                    icon: 'info',
+                    showCancelButton: true,
+                    confirmButtonText: 'Use Points',
+                    cancelButtonText: 'Cancel'
+                });
+                if (!result.isConfirmed) return;
+                willUsePoints = true;
+            }
+            else {
+                Swal.fire({ 
+                    icon: 'error', 
+                    title: 'Insufficient Funds', 
+                    text: `You need ${currency}${actualCost} or ${pointsRate} Points to download this file.`
+                });
+                return;
+            }
+            
+            await triggerPayment(willUsePoints);
+        } else if (isGuest) {
+            const result = await Swal.fire({
+                title: 'Confirm Guest Download',
+                text: "Confirm using your single free daily guest pass to download these Passport Photos?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Use Pass',
+                cancelButtonText: 'Cancel'
+            });
+            if (!result.isConfirmed) return;
+            await triggerPayment(false);
+        } else {
+            // Admin
+            await triggerPayment(false);
+        }
+    }
+
+    async function triggerPayment(willUsePoints) {
+        try {
+            let formData = new FormData();
+            formData.append('service_slug', 'passport_photo');
+            formData.append('service_type', 'Passport Photo Pro');
+            if (willUsePoints) formData.append('use_points', '1');
+
+            let response = await fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
+            let text = await response.text(); 
             
             try {
-                let formData = new FormData();
-                formData.append('service_type', 'Passport Photo Maker (AI Pro)');
-
-                let response = await fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
-                let text = await response.text(); 
-                
-                try {
-                    let result = JSON.parse(text);
-                    if (result.success) {
-                        processHighResDownload();
-                        alert(` ✅ Downloaded!\nNew balance: ${currency}${result.remaining_balance}`);
-                    } else { alert("❌ Error: " + result.message); }
-                } catch (jsonError) { alert("❌ Server error."); }
-            } catch (error) { alert("❌ Network error."); }
-        } else {
-            let formData = new FormData();
-            formData.append('service_type', 'Passport Photo Maker (Admin)');
-            fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
-            processHighResDownload(); 
+                let result = JSON.parse(text);
+                if (result.success) {
+                    processFinalDownload();
+                    if(isGuest || result.cost <= 0) {
+                        Swal.fire({ icon: 'success', title: 'Success', text: result.message || "✅ Guest pass used!" });
+                    } else {
+                        Swal.fire({ 
+                            icon: 'success', 
+                            title: 'Downloaded!', 
+                            html: `Paid from: <b>${result.deducted_type === 'points' ? result.cost + ' Pts' : currency + result.cost}</b>` 
+                        });
+                    }
+                } else { 
+                    Swal.fire({ icon: 'error', title: 'Error', text: result.message }); 
+                }
+            } catch (jsonError) { 
+                console.error("JSON Error:", text);
+                Swal.fire({ icon: 'error', title: 'Parse Error', text: 'Server parsing error. Please check connection.' }); 
+            }
+        } catch (error) { 
+            Swal.fire({ icon: 'error', title: 'Network Error', text: 'Network connection failed.' }); 
         }
     }
 
@@ -1167,30 +1277,28 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if(!targetBox || !sourceBox) { alert('Please select red target box and green source box.'); return; }
         
         showLoading(true, "Applying Clean Patch...");
-        setTimeout(() => {
-            let sUrl = canvas.toDataURL({
-                format: 'png',
-                left: sourceBox.left, top: sourceBox.top, width: sourceBox.width, height: sourceBox.height,
-                multiplier: 1
+        // Removed artificial 300ms delay
+        let sUrl = canvas.toDataURL({
+            format: 'png',
+            left: sourceBox.left, top: sourceBox.top, width: sourceBox.width, height: sourceBox.height,
+            multiplier: 1
+        });
+        
+        fabric.Image.fromURL(sUrl, function(patchImg) {
+            // Feather the edges of the patch slightly via CSS or Fabric blur
+            let blurFilter = new fabric.Image.filters.Blur({ blur: 0.1 });
+            patchImg.filters.push(blurFilter);
+            patchImg.applyFilters();
+            
+            patchImg.set({
+                left: targetBox.left, top: targetBox.top, width: targetBox.width, height: targetBox.height,
+                scaleX: 1, scaleY: 1, selectable: false, evented: false
             });
             
-            fabric.Image.fromURL(sUrl, function(patchImg) {
-                // Feather the edges of the patch slightly via CSS or Fabric blur
-                let blurFilter = new fabric.Image.filters.Blur({ blur: 0.1 });
-                patchImg.filters.push(blurFilter);
-                patchImg.applyFilters();
-                
-                patchImg.set({
-                    left: targetBox.left, top: targetBox.top, width: targetBox.width, height: targetBox.height,
-                    scaleX: 1, scaleY: 1, selectable: false, evented: false
-                });
-                
-                canvas.add(patchImg); canvas.sendBackwards(patchImg);
-                
-                resetAllModes(); showLoading(false);
-            });
+            canvas.add(patchImg); canvas.sendBackwards(patchImg);
             
-        }, 300);
+            resetAllModes(); showLoading(false);
+        });
     }
 
     function showLoading(show, text = "Processing...") {

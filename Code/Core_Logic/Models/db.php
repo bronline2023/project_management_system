@@ -43,6 +43,8 @@ function connectDB() {
 
     try {
         $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+        // Sync MySQL with Indian Standard Time (IST)
+        $pdo->exec("SET time_zone = '+05:30'");
         return $pdo;
     } catch (PDOException $e) {
         // For development, this helps in debugging.

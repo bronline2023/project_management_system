@@ -1,36 +1,46 @@
 <?php
-require_once CORE_INCLUDES_PATH . 'service_paywall.php';
-enforce_service_paywall('photo_studio');
-
-/**
+// Smart Checkout integrated
 
 /**
  * views/photo_studio.php
  * THE ULTIMATE MASTER STUDIO: Fixed White Box Bug in Object Remover, Perfect Crop, All Tools
  */
 
-
-
 $pdo = connectDB();
-$card_cost = 10.00; 
 $currency = '₹';
 $user_role = $_SESSION['user_role'] ?? 'guest';
 
+$service_rate = 2.00;
+$points_rate = 0;
+$user_balance = 0.00;
+$user_points = 0;
+$is_custom_rate = false;
+$custom_poster_rate = 0.00;
+
 try {
-    $stmt = $pdo->query("SELECT poster_generation_cost, currency_symbol FROM settings LIMIT 1");
-    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($settings) {
-        $card_cost = isset($settings['poster_generation_cost']) ? (float)$settings['poster_generation_cost'] : 10.00;
-        $currency = isset($settings['currency_symbol']) ? $settings['currency_symbol'] : '₹';
+    $stmt_rate = $pdo->prepare("SELECT price, points_price FROM digital_service_rates WHERE service_slug = 'photo_studio' AND is_active = 1");
+    $stmt_rate->execute();
+    $rate_data = $stmt_rate->fetch();
+    if ($rate_data) {
+        $service_rate = (float)$rate_data['price'];
+        $points_rate = (int)$rate_data['points_price'];
     }
 
+    $stmt = $pdo->query("SELECT currency_symbol FROM settings LIMIT 1");
+    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($settings && isset($settings['currency_symbol'])) { $currency = $settings['currency_symbol']; }
+
     if (isset($_SESSION['user_id'])) {
-        $stmt_user = $pdo->prepare("SELECT custom_poster_rate FROM users WHERE id = ?");
+        $stmt_user = $pdo->prepare("SELECT balance, poster_points, custom_poster_rate FROM users WHERE id = ?");
         $stmt_user->execute([$_SESSION['user_id']]);
         $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
-        
-        if ($user_data && isset($user_data['custom_poster_rate']) && $user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
-            $card_cost = (float)$user_data['custom_poster_rate'];
+        if ($user_data) {
+            $user_balance = (float)$user_data['balance'];
+            $user_points = (int)$user_data['poster_points'];
+            if ($user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
+                $custom_poster_rate = (float)$user_data['custom_poster_rate'];
+                $is_custom_rate = true;
+            }
         }
     }
 } catch (Exception $e) {}
@@ -59,8 +69,10 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digital Studio</title>
+    <link rel="icon" type="image/png" href="<?= ASSETS_URL ?>img/br_favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.img.ly/packages/@imgly/background-removal@1.5.5/dist/index.js"></script>
+    <!-- Cache-Busting Build: <?= APP_VERSION ?> -->
 </head>
 <body>
 
@@ -328,12 +340,11 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         padding: 40px 40px 40px 40px; padding-top: 40px;
     }
     
-    .canvas-container { box-shadow: 0 15px 50px rgba(0,0,0,0.8); border: 1px solid #475569;}
+    .studio-canvas-layout { box-shadow: 0 15px 50px rgba(0,0,0,0.8); border: 1px solid #475569;}
 
     #fileUploadInput { display: none; }
 </style>
 
-<input type="file" id="fileUploadInput" accept="image/*" onchange="addUploadedImage(event)">
 
 <?php $page_title = 'Ultimate Photo Studio Pro'; require_once INCLUDES_PATH.'digital_header.php'; ?>
 
@@ -345,11 +356,22 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                 <i class="fas fa-download"></i><span style="font-weight:bold;">Export</span>
             </button>
             <?php if(isset($_SESSION['user_id'])): ?>
-            <button class="tool-icon-btn" style="background:#f59e0b; color:#fff; border-color:#d97706;" onclick="saveDraft()" title="Save As Draft">
-                <i class="fas fa-save"></i><span style="font-weight:bold;">Draft</span>
+            <button class="tool-icon-btn" style="background:#f59e0b; color:#fff; border-color:#d97706;" onclick="saveDraft()" title="Save Draft">
+                <i class="fas fa-save"></i><span style="font-weight:bold;">Save</span>
+            </button>
+            <button class="tool-icon-btn" style="background:#ea580c; color:#fff; border-color:#c2410c;" onclick="saveDraft(true)" title="Save As New Draft">
+                <i class="fas fa-copy"></i><span style="font-weight:bold;">Save As</span>
             </button>
             <?php endif; ?>
-            <button class="tool-icon-btn" onclick="document.getElementById('fileUploadInput').click()" title="Upload Image">
+            <div style="width: 100%; height: 1px; background: #334155; margin: 5px 0;"></div>
+            <button class="tool-icon-btn" onclick="undo()" title="Undo (Ctrl+Z)">
+                <i class="fas fa-undo"></i><span>Undo</span>
+            </button>
+            <button class="tool-icon-btn" onclick="redo()" title="Redo (Ctrl+Y)">
+                <i class="fas fa-redo"></i><span>Redo</span>
+            </button>
+            <div style="width: 100%; height: 1px; background: #334155; margin: 5px 0;"></div>
+            <button class="tool-icon-btn" onclick="document.getElementById('fileUploadInput').click()" title="Upload Image(s)">
                 <i class="fas fa-upload"></i><span>Upload</span>
             </button>
             <button class="tool-icon-btn" onclick="clearCanvas()" title="Clear Canvas">
@@ -395,8 +417,11 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 
         <div class="props-sidebar" id="panel-bg" style="display:block;">
             <div class="props-title"><i class="fas fa-desktop"></i> Canvas Setup</div>
-            <p style="font-size:13px; color:#94a3b8; margin-bottom:20px;">Set the size of the poster you want to make.</p>
-            
+            <div class="mb-4">
+                <label class="form-label" style="color:#10b981; font-weight:bold;">Project / Draft Name</label>
+                <input type="text" id="draftNameInput" class="form-control" placeholder="Photo_Name..." value="<?= htmlspecialchars($loaded_draft_name ?? '') ?>">
+            </div>
+
             <div class="grid-2">
                 <div>
                     <label class="form-label">Width (px)</label>
@@ -432,9 +457,15 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             </div>
 
             <div class="slider-container" style="border-color:#8b5cf6;">
-                <h6 style="color:#8b5cf6; font-size:15px; font-weight:bold; margin-bottom:8px;"><i class="fas fa-palette"></i> AI Colorize</h6>
-                <p style="font-size:12px; color:#94a3b8; margin-bottom:15px;">Automatic color fill in old black and white photos.</p>
-                <button class="action-btn ai-btn mb-0" onclick="applyAIColorize()"><i class="fas fa-tint"></i> Colorize Photo</button>
+                <h6 style="color:#8b5cf6; font-size:15px; font-weight:bold; margin-bottom:8px;"><i class="fas fa-palette"></i> AI Colorizer</h6>
+                <p style="font-size:12px; color:#94a3b8; margin-bottom:15px;">Turn B&W photos into colorful memories.</p>
+                <button class="action-btn mb-0" style="background:#8b5cf6; border:none;" onclick="applyAIColorize()"><i class="fas fa-magic"></i> Colorize Photo</button>
+            </div>
+
+            <div class="slider-container" style="border-color:#ef4444; margin-top: 20px;">
+                <h6 style="color:#ef4444; font-size:15px; font-weight:bold; margin-bottom:8px;"><i class="fas fa-history"></i> Reset AI Features</h6>
+                <p style="font-size:12px; color:#94a3b8; margin-bottom:15px;">Revert all AI enhancements and filters.</p>
+                <button class="action-btn danger mb-0" onclick="resetAIFeatures()"><i class="fas fa-undo"></i> Reset to Original</button>
             </div>
 
             <div class="slider-container" style="border-color:#ef4444;">
@@ -682,9 +713,9 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         <button type="button" onclick="sysChangeZoom(-0.1)" style="background: #f1f5f9; border: 1px solid #94a3b8; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-weight: bold; transition: 0.2s;">➖</button>
     </div> <!-- sys-zoom-controls -->
     
-    <div class="canvas-container" style="margin: 0 auto; overflow: visible;">
-        <canvas id="mainCanvas"></canvas>
-    </div>
+    <div class="studio-canvas-layout">
+            <canvas id="mainCanvas"></canvas>
+        </div>
 </div> <!-- workspaceContainer -->
 
 </div> <!-- studio-body -->
@@ -701,27 +732,60 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); box-shadow: 0 0 15px rgba(16,185,129,0.5); } 100% { transform: scale(1); } }
 </style>
 
-<input type="file" id="fileUploadInput" accept="image/png, image/jpeg, image/jpg, image/webp">
+<input type="file" id="fileUploadInput" accept="image/png, image/jpeg, image/jpg, image/webp" multiple onchange="addUploadedImage(event)">
 
 <script>
     const userRole = '<?= $_SESSION['user_role'] ?? 'guest' ?>';
     const currency = '<?= $currency ?>';
-    const cardCost = <?= $card_cost ?>;
+    const serviceRate = <?= $service_rate ?>;
+    const pointsRate = <?= $points_rate ?>;
+    const userBalance = <?= $user_balance ?>;
+    const userPoints = <?= $user_points ?>;
+    const isCustomRate = <?= $is_custom_rate ? 'true' : 'false' ?>;
+    const customRate = <?= $custom_poster_rate ?>;
+    const cardCost = serviceRate; 
     const baseUrl = "<?= BASE_URL ?>";
     const APP_URL = "<?= APP_URL ?>";
     
-    function saveDraft() {
+    let currentDraftId = <?= $current_draft_id ?? 0 ?>;
+
+    function saveDraft(saveAs = false) {
         if (!canvas) return;
         const btn = event.currentTarget;
         const originalHtml = btn.innerHTML;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Saving...</span>';
         btn.disabled = true;
 
-        const json = JSON.stringify(canvas.toJSON(['customId', 'customBgEnable', 'customBgColor', 'customBgShape', 'customPadding', 'fontSize', 'fontFamily', 'fill', 'opacity', 'fontWeight', 'fontStyle', 'textAlign', 'stroke', 'strokeWidth']));
+        let nameField = document.getElementById('draftNameInput');
+        let draftName = nameField ? nameField.value.trim() : '';
+
+        if (!draftName) {
+            let d = new Date();
+            let ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
+            let ts = String(d.getHours()).padStart(2, '0') + "-" + String(d.getMinutes()).padStart(2, '0') + "-" + String(d.getSeconds()).padStart(2, '0');
+            draftName = "Photo_" + ds + "_" + ts;
+            if(nameField) nameField.value = draftName;
+        }
+
+        if (saveAs) {
+            draftName = prompt("Save As new draft name:", draftName + "_Copy");
+            if (!draftName) {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+                return;
+            }
+            if(nameField) nameField.value = draftName;
+        }
+        const json = JSON.stringify(canvas.toJSON(['customId', 'isGrid', 'filters', 'originalFilters']));
         const formData = new FormData();
         formData.append('service_slug', 'photo_studio');
         formData.append('service_name', 'Ultimate Photo Studio Pro');
+        formData.append('draft_name', draftName);
         formData.append('json', json);
+        
+        if (!saveAs && currentDraftId > 0) {
+            formData.append('draft_id', currentDraftId);
+        }
 
         fetch(APP_URL + 'save_digital_draft.php', {
             method: 'POST',
@@ -730,7 +794,8 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('✅ Draft saved successfully! Find it in "Saved Drafts" in the sidebar.');
+                currentDraftId = data.draft_id;
+                alert('✅ Draft saved successfully!');
             } else {
                 alert('❌ Error: ' + (data.error || 'Unknown error'));
             }
@@ -783,6 +848,89 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     let isMasking = false;
     let maskPathHistory = [];
 
+
+    // ==========================================
+    // UI & HISTORY UTILITIES
+    // ==========================================
+    function showLoading(show, txt = "Processing...") { 
+        let l = document.getElementById('loadingOverlay');
+        let t = document.getElementById('loadingText');
+        if(l) {
+            l.style.display = show ? 'flex' : 'none';
+            if(t && txt) t.innerText = txt;
+        }
+    }
+    const hideLoader = () => showLoading(false);
+    const showLoader = (txt) => showLoading(true, txt);
+
+    // Optimized History Logic (Debounced)
+    let historyStack = [];
+    let historyIndex = -1;
+    let isHistoryOperating = false;
+    let historyTimeout = null;
+
+    function saveHistory() {
+        if(isHistoryOperating) return;
+        
+        // Debounce: Wait 300ms after last change before stringifying heavy canvas
+        if(historyTimeout) clearTimeout(historyTimeout);
+        historyTimeout = setTimeout(() => {
+            const json = JSON.stringify(canvas.toJSON(['customId', 'isGrid', 'filters', 'originalFilters']));
+            if (historyStack.length > 0 && historyStack[historyIndex] === json) return;
+            
+            historyStack = historyStack.slice(0, historyIndex + 1);
+            historyStack.push(json);
+            historyIndex++;
+            if(historyStack.length > 50) {
+                historyStack.shift();
+                historyIndex--;
+            }
+        }, 300);
+    }
+
+    function undo() {
+        if(historyIndex > 0) {
+            isHistoryOperating = true;
+            historyIndex--;
+            canvas.loadFromJSON(historyStack[historyIndex], function() {
+                canvas.renderAll();
+                isHistoryOperating = false;
+            });
+        }
+    }
+
+    function redo() {
+        if(historyIndex < historyStack.length - 1) {
+            isHistoryOperating = true;
+            historyIndex++;
+            canvas.loadFromJSON(historyStack[historyIndex], function() {
+                canvas.renderAll();
+                isHistoryOperating = false;
+            });
+        }
+    }
+
+    // Force synchronization of Live Editor Panels
+    function openPanel(panelId, event) {
+        if(typeof isMasking !== 'undefined' && isMasking) toggleEraserMask();
+        if(typeof cropZone !== 'undefined' && cropZone) cancelCrop();
+        
+        document.querySelectorAll('.props-sidebar').forEach(p => p.style.display = 'none');
+        document.querySelectorAll('.tool-icon-btn').forEach(b => b.classList.remove('active'));
+        
+        let target = document.getElementById(panelId);
+        if(target) {
+            target.style.display = 'block';
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
+        }
+        if(typeof fitCanvasToScreen === 'function') fitCanvasToScreen();
+    }
+
+
+    // Removed Duplicate setBgColorDirect (Consolidated below)
+    
     window.addEventListener('resize', fitCanvasToScreen);
 
     function fitCanvasToScreen() {
@@ -799,54 +947,80 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         canvas.setDimensions({ width: LOGICAL_W * scale, height: LOGICAL_H * scale });
         canvas.setZoom(scale);
         canvas.renderAll();
+        
+        // Synchronize manual zoom buttons
+        sysCurrentZoom = scale;
     }
 
     // Initialize size
     fitCanvasToScreen();
     canvas.backgroundColor = '#ffffff';
+    canvas.renderAll();
 
     // ==========================================
     // 1. UPLOAD IMAGE
     // ==========================================
-    document.getElementById('fileUploadInput').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if(!file) return;
-        const reader = new FileReader();
-        reader.onload = function(f) {
-            showLoading(true, "Loading Image...");
-            fabric.Image.fromURL(f.target.result, function(img) {
-                const sX = (LOGICAL_W * 0.8) / img.width;
-                const sY = (LOGICAL_H * 0.8) / img.height;
-                const s = Math.min(sX, sY, 1);
-                
-                img.set({
-                    left: LOGICAL_W / 2, top: LOGICAL_H / 2, originX: 'center', originY: 'center',
-                    scaleX: s, scaleY: s,
-                    borderColor: '#38bdf8', cornerColor: '#38bdf8', transparentCorners: false
-                });
-                canvas.add(img); canvas.setActiveObject(img); canvas.renderAll();
-                showLoading(false);
-            });
-        };
-        reader.readAsDataURL(file);
-        e.target.value = "";
-    });
+    function addUploadedImage(e) {
+        const files = e.target.files;
+        if(!files || files.length === 0) return;
+        
+        showLoading(true, "Loading Image(s)...");
+        let loadedCount = 0;
+        let totalFiles = files.length;
+        
+        // Safety fallback: hide loader after 10 seconds if it hangs
+        const safetyTimeout = setTimeout(() => {
+            showLoading(false);
+        }, 10000);
+
+        Array.from(files).forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onerror = () => {
+                loadedCount++;
+                if (loadedCount === totalFiles) { clearTimeout(safetyTimeout); showLoading(false); }
+            };
+            reader.onload = function(f) {
+                fabric.Image.fromURL(f.target.result, function(img) {
+                    if (!img) {
+                        loadedCount++;
+                        if (loadedCount === totalFiles) { clearTimeout(safetyTimeout); showLoading(false); }
+                        return;
+                    }
+                    const sX = (LOGICAL_W * 0.8) / img.width;
+                    const sY = (LOGICAL_H * 0.8) / img.height;
+                    const s = Math.min(sX, sY, 1);
+                    
+                    img.set({
+                        left: (LOGICAL_W / 2) + (index * 20),
+                        top: (LOGICAL_H / 2) + (index * 20),
+                        originX: 'center', originY: 'center',
+                        scaleX: s, scaleY: s,
+                        borderColor: '#38bdf8', cornerColor: '#38bdf8', transparentCorners: false
+                    });
+                    canvas.add(img);
+                    if (index === totalFiles - 1) {
+                        canvas.setActiveObject(img);
+                    }
+                    
+                    loadedCount++;
+                    if (loadedCount === totalFiles) {
+                        clearTimeout(safetyTimeout);
+                        canvas.renderAll();
+                        showLoading(false);
+                        saveHistory();
+                    }
+                }, { crossOrigin: 'anonymous' });
+            };
+            reader.readAsDataURL(file);
+        });
+        
+        e.target.value = ""; 
+    }
 
     // ==========================================
     // 2. PANEL TOGGLES
     // ==========================================
-    function openPanel(panelId, event) {
-        if(isMasking) toggleEraserMask();
-        if(cropZone) cancelCrop();
-        
-        document.querySelectorAll('.props-sidebar').forEach(p => p.style.display = 'none');
-        document.querySelectorAll('.tool-icon-btn').forEach(btn => btn.classList.remove('active'));
-        
-        document.getElementById(panelId).style.display = 'block';
-        if(event && event.currentTarget) event.currentTarget.classList.add('active');
-        
-        fitCanvasToScreen();
-    }
+    // Removed Duplicate openPanel (Consolidated at Top)
 
     // ==========================================
     // 3. CANVAS SETUP
@@ -865,8 +1039,17 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         else { canvas.backgroundColor = color; document.getElementById('bgColorPicker').value = color; }
         canvas.renderAll();
     }
-    function clearCanvas() {
-        if(confirm("Clear all items from the canvas?")) {
+    async function clearCanvas() {
+        const result = await Swal.fire({
+            title: 'Clear Canvas?',
+            text: "Are you sure you want to clear all items from the canvas?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Clear All',
+            cancelButtonText: 'No, Keep It',
+            confirmButtonColor: '#ef4444'
+        });
+        if(result.isConfirmed) {
             canvas.clear(); 
             canvas.backgroundColor = document.getElementById('bgColorPicker').value;
             canvas.renderAll();
@@ -904,6 +1087,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     // 4. SMART EXACT CROP
     // ==========================================
     let currentCropRatio = null;
+    let targetCropObj = null;
     function setCropRatio(ratioType) {
         currentCropRatio = ratioType;
         if(cropZone) {
@@ -923,8 +1107,13 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     
     function startCrop() {
         const obj = canvas.getActiveObject();
-        if(!obj) { alert("Select a photo to crop."); return; }
+        if(!obj) { 
+            Swal.fire({ icon: 'warning', title: 'Select Photo', text: 'Please select a photo to crop first.' });
+            return; 
+        }
         if(obj.type !== 'image') { alert("Only photos can be cropped."); return; }
+        
+        targetCropObj = obj;
         
         document.getElementById('btnStartCrop').style.display = 'none';
         document.getElementById('cropOptions').style.display = 'block';
@@ -941,39 +1130,55 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     }
     
     function applyCrop() {
-        if(!cropZone) return;
-        showLoading(true, "Cropping Exact Pixels...");
+        if(!cropZone || !targetCropObj) return;
+        const targetObj = targetCropObj;
+
+        showLoading(true, "Cropping Selected Photo...");
         setTimeout(() => {
             let lWidth = cropZone.width * cropZone.scaleX;
             let lHeight = cropZone.height * cropZone.scaleY;
             let lLeft = cropZone.left - lWidth / 2;
             let lTop = cropZone.top - lHeight / 2;
 
-            canvas.discardActiveObject(); cropZone.visible = false; canvas.renderAll();
+            canvas.discardActiveObject(); 
+            cropZone.visible = false;
+            
+            // Render ONLY the target image and its current state to a temp canvas
+            const originalVisibility = [];
+            canvas.getObjects().forEach(obj => {
+                originalVisibility.push({obj: obj, visible: obj.visible});
+                if(obj !== targetObj) obj.visible = false;
+            });
+            let oldBg = canvas.backgroundColor;
+            canvas.backgroundColor = 'transparent';
+            canvas.renderAll();
 
-            // Extract pixels directly from logic
-            let croppedDataUrl = canvas.toDataURL({ 
-                format: 'png', 
-                left: lLeft, top: lTop, width: lWidth, height: lHeight, 
-                multiplier: 1 / canvas.getZoom()
+            let mult = 2 / canvas.getZoom();
+            const dataUrl = canvas.toDataURL({
+                left: lLeft, top: lTop, width: lWidth, height: lHeight,
+                format: 'png', multiplier: mult
             });
 
-            // Rebuild canvas to crop size
-            canvas.clear(); 
-            LOGICAL_W = Math.round(lWidth); LOGICAL_H = Math.round(lHeight);
+            // Restore visibility
+            originalVisibility.forEach(item => { item.obj.visible = item.visible; });
+            canvas.backgroundColor = oldBg;
+            canvas.renderAll();
 
-            document.getElementById('resizeW').value = LOGICAL_W; 
-
-            document.getElementById('resizeH').value = LOGICAL_H;
-            
-            let currentBg = document.getElementById('bgColorPicker').value;
-            canvas.backgroundColor = currentBg === 'transparent' ? null : currentBg;
-
-            fabric.Image.fromURL(croppedDataUrl, function(img) {
-                img.set({ left: LOGICAL_W / 2, top: LOGICAL_H / 2, originX: 'center', originY: 'center' });
-                canvas.add(img); canvas.setActiveObject(img);
+            fabric.Image.fromURL(dataUrl, function(croppedImg) {
+                croppedImg.set({
+                    left: cropZone.left, top: cropZone.top,
+                    originX: 'center', originY: 'center',
+                    scaleX: 1 / mult, scaleY: 1 / mult,
+                    borderColor: '#38bdf8', cornerColor: '#38bdf8', transparentCorners: false
+                });
                 
-                fitCanvasToScreen(); cancelCrop(); showLoading(false);
+                canvas.remove(targetObj);
+                canvas.add(croppedImg);
+                canvas.setActiveObject(croppedImg);
+                
+                cancelCrop();
+                showLoading(false);
+                saveHistory();
             });
         }, 200);
     }
@@ -983,6 +1188,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             canvas.remove(cropZone); 
             cropZone = null; 
         }
+        targetCropObj = null;
         document.getElementById('btnStartCrop').style.display = 'block'; 
         document.getElementById('cropOptions').style.display = 'none';
     }
@@ -1021,6 +1227,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         }
 
         canvas.renderAll();
+        saveHistory();
     }
 
     function syncEffectsPanel() {
@@ -1054,6 +1261,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         const opacity = parseFloat(document.getElementById('objOpacity').value);
         obj.set('opacity', opacity); document.getElementById('valOpacity').innerText = Math.round(opacity * 100) + '%';
         canvas.renderAll();
+        saveHistory();
     }
 
     function applyFilters() {
@@ -1081,7 +1289,11 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             !(f instanceof fabric.Image.filters.Saturation) &&
             !(f instanceof fabric.Image.filters.Noise) &&
             !(f instanceof fabric.Image.filters.Pixelate) &&
-            !(f instanceof fabric.Image.filters.Blur)
+            !(f instanceof fabric.Image.filters.Blur) &&
+            !(f instanceof fabric.Image.filters.Grayscale) && // Also remove special filters
+            !(f instanceof fabric.Image.filters.Sepia) &&
+            !(f instanceof fabric.Image.filters.Invert) &&
+            !(f instanceof fabric.Image.filters.Vintage)
         );
         
         if (b !== 0) obj.filters.push(new fabric.Image.filters.Brightness({ brightness: b }));
@@ -1092,6 +1304,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if (blur !== 0) obj.filters.push(new fabric.Image.filters.Blur({ blur: blur }));
         
         obj.applyFilters(); canvas.renderAll();
+        saveHistory();
     }
 
     function applySpecialFilter(type) {
@@ -1102,7 +1315,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if(type === 'invert') filter = new fabric.Image.filters.Invert(); 
         if(type === 'vintage') filter = new fabric.Image.filters.Vintage();
         
-        if(filter) { obj.filters.push(filter); obj.applyFilters(); canvas.renderAll(); }
+        if(filter) { obj.filters.push(filter); obj.applyFilters(); canvas.renderAll(); saveHistory(); }
     }
 
     function resetImageFilters() {
@@ -1115,7 +1328,47 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         document.getElementById('valB').innerText = 0; document.getElementById('valC').innerText = 0; document.getElementById('valS').innerText = 0; 
         document.getElementById('valN').innerText = 0; document.getElementById('valP').innerText = 1; document.getElementById('valBlur').innerText = 0; 
         
-        obj.filters = []; obj.applyFilters(); canvas.renderAll();
+        obj.filters = []; // Clear all filters
+        obj.applyFilters(); canvas.renderAll();
+        saveHistory();
+    }
+
+    function syncFilterState() {
+        const obj = canvas.getActiveObject();
+        if(!obj || obj.type !== 'image') return;
+        
+        // Reset slider values to default first
+        const defaults = { brightness: 0, contrast: 0, saturation: 0, noise: 0, pixelate: 1, blur: 0, opacity: 1 };
+        
+        // Read current filters
+        let b = 0, c = 0, sat = 0, n = 0, p = 1, blur = 0;
+        
+        if (obj.filters) {
+            obj.filters.forEach(f => {
+                if (f instanceof fabric.Image.filters.Brightness) b = f.brightness;
+                if (f instanceof fabric.Image.filters.Contrast) c = f.contrast;
+                if (f instanceof fabric.Image.filters.Saturation) sat = f.saturation;
+                if (f instanceof fabric.Image.filters.Noise) n = f.noise;
+                if (f instanceof fabric.Image.filters.Pixelate) p = f.blocksize;
+                if (f instanceof fabric.Image.filters.Blur) blur = f.blur;
+            });
+        }
+        
+        document.getElementById('filterBrightness').value = b;
+        document.getElementById('filterContrast').value = c;
+        document.getElementById('filterSaturation').value = sat;
+        document.getElementById('filterNoise').value = n;
+        document.getElementById('filterPixelate').value = p;
+        document.getElementById('filterBlur').value = blur;
+        document.getElementById('objOpacity').value = obj.opacity;
+        
+        document.getElementById('valB').innerText = b;
+        document.getElementById('valC').innerText = c;
+        document.getElementById('valS').innerText = sat;
+        document.getElementById('valN').innerText = n;
+        document.getElementById('valP').innerText = p;
+        document.getElementById('valBlur').innerText = blur;
+        document.getElementById('valOpacity').innerText = Math.round(obj.opacity * 100) + '%';
     }
 
     // ==========================================
@@ -1126,15 +1379,18 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if(!obj || obj.type !== 'image') { alert("Select photo first."); return; }
         
         showLoading(true, "AI Enhancing Image (HD)...");
-        setTimeout(() => {
-            if(!obj.originalFilters) obj.originalFilters = [...obj.filters];
-            
-            let sharpenMatrix = [  0, -1,  0, -1,  5, -1, 0, -1,  0 ];
-            let filter = new fabric.Image.filters.Convolute({ matrix: sharpenMatrix });
-            let contrast = new fabric.Image.filters.Contrast({ contrast: 0.15 });
-            
-            obj.filters.push(filter, contrast); obj.applyFilters(); canvas.renderAll(); showLoading(false);
-        }, 500);
+        // Instant processing (no 500ms delay)
+        if(!obj.originalFilters) obj.originalFilters = [...obj.filters];
+        
+        let sharpenMatrix = [  0, -1,  0, -1,  5, -1, 0, -1,  0 ];
+        let filter = new fabric.Image.filters.Convolute({ matrix: sharpenMatrix });
+        let contrast = new fabric.Image.filters.Contrast({ contrast: 0.15 });
+        
+        obj.filters.push(filter, contrast); 
+        obj.applyFilters(); 
+        canvas.renderAll(); 
+        showLoading(false);
+        saveHistory();
     }
 
     function applyAIColorize() {
@@ -1142,20 +1398,30 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if(!obj || obj.type !== 'image') { alert("Select photo first."); return; }
         
         showLoading(true, "AI Colorizing...");
-        setTimeout(() => {
-            if(!obj.originalFilters) obj.originalFilters = [...obj.filters];
-            let saturation = new fabric.Image.filters.Saturation({ saturation: 0.85 });
-            let brightness = new fabric.Image.filters.Brightness({ brightness: 0.05 });
-            
-            obj.filters.push(saturation, brightness); obj.applyFilters(); canvas.renderAll(); showLoading(false);
-        }, 500);
+        // Instant processing
+        if(!obj.originalFilters) obj.originalFilters = [...obj.filters];
+        let saturation = new fabric.Image.filters.Saturation({ saturation: 0.85 });
+        let brightness = new fabric.Image.filters.Brightness({ brightness: 0.05 });
+        
+        obj.filters.push(saturation, brightness); 
+        obj.applyFilters(); 
+        canvas.renderAll(); 
+        showLoading(false);
+        saveHistory();
     }
 
     function resetAIFilters() {
         const obj = canvas.getActiveObject();
         if(!obj || obj.type !== 'image') return;
+        // Reset only AI filters, keep basic adjustments if they exist
         if(obj.originalFilters) {
-            obj.filters = [...obj.originalFilters]; obj.applyFilters(); canvas.renderAll();
+            obj.filters = obj.originalFilters.filter(f => 
+                !(f instanceof fabric.Image.filters.Convolute) && 
+                !(f instanceof fabric.Image.filters.Saturation) &&
+                !(f instanceof fabric.Image.filters.Brightness)
+            );
+            obj.applyFilters(); canvas.renderAll();
+            saveHistory();
         }
     }
 
@@ -1197,50 +1463,49 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         
         showLoading(true, "AI Inpainting (Removing Object)...");
         
-        setTimeout(() => {
-            // Group the masks to get bounding box
-            let group = new fabric.Group(maskPathHistory);
-            let rect = group.getBoundingRect();
+        // Group the masks to get bounding box
+        let group = new fabric.Group(maskPathHistory);
+        let rect = group.getBoundingRect();
+        
+        // Hide masks temporarily so they aren't cloned
+        maskPathHistory.forEach(path => path.visible = false);
+        canvas.renderAll();
+
+        // Extract the background area slightly LARGER than the mask (for cloning surrounding pixels)
+        let cropDataUrl = canvas.toDataURL({ 
+            format: 'jpeg', left: rect.left - 15, top: rect.top - 15, 
+            width: rect.width + 30, height: rect.height + 30, multiplier: 1 
+        });
+
+        fabric.Image.fromURL(cropDataUrl, function(img) {
+            // Apply a heavy blur to the cloned patch to create a seamless blend (Simulated Inpainting)
+            let blurFilter = new fabric.Image.filters.Blur({ blur: 0.6 });
+            img.filters.push(blurFilter);
+            img.applyFilters();
             
-            // Hide masks temporarily so they aren't cloned
-            maskPathHistory.forEach(path => path.visible = false);
-            canvas.renderAll();
+            // Use the red masks as a clip path to only show the blurred replacement WHERE the user painted
+            let clipGroup = new fabric.Group(maskPathHistory.map(p => {
+                let clone = fabric.util.object.clone(p);
+                // Adjust coordinates relative to the new patch image
+                clone.set({ left: clone.left - rect.left + 15, top: clone.top - rect.top + 15, visible: true, fill: 'black', stroke: 'black' });
+                return clone;
+            }));
 
-            // Extract the background area slightly LARGER than the mask (for cloning surrounding pixels)
-            let cropDataUrl = canvas.toDataURL({ 
-                format: 'jpeg', left: rect.left - 15, top: rect.top - 15, 
-                width: rect.width + 30, height: rect.height + 30, multiplier: 1 
+            img.set({
+                left: rect.left - 15, top: rect.top - 15,
+                selectable: true, evented: true,
+                clipPath: clipGroup // MAGIC: Only shows blurred pixels inside the brushed area!
             });
 
-            fabric.Image.fromURL(cropDataUrl, function(img) {
-                // Apply a heavy blur to the cloned patch to create a seamless blend (Simulated Inpainting)
-                let blurFilter = new fabric.Image.filters.Blur({ blur: 0.6 });
-                img.filters.push(blurFilter);
-                img.applyFilters();
-                
-                // Use the red masks as a clip path to only show the blurred replacement WHERE the user painted
-                let clipGroup = new fabric.Group(maskPathHistory.map(p => {
-                    let clone = fabric.util.object.clone(p);
-                    // Adjust coordinates relative to the new patch image
-                    clone.set({ left: clone.left - rect.left + 15, top: clone.top - rect.top + 15, visible: true, fill: 'black', stroke: 'black' });
-                    return clone;
-                }));
-
-                img.set({
-                    left: rect.left - 15, top: rect.top - 15,
-                    selectable: true, evented: true,
-                    clipPath: clipGroup // MAGIC: Only shows blurred pixels inside the brushed area!
-                });
-
-                // Delete original red masks
-                maskPathHistory.forEach(path => canvas.remove(path));
-                maskPathHistory = [];
-                
-                canvas.add(img); canvas.renderAll();
-                toggleEraserMask(); // Turn off mask mode
-                showLoading(false);
-            });
-        }, 500);
+            // Delete original red masks
+            maskPathHistory.forEach(path => canvas.remove(path));
+            maskPathHistory = [];
+            
+            canvas.add(img); canvas.renderAll();
+            toggleEraserMask(); // Turn off mask mode
+            showLoading(false);
+            saveHistory();
+        });
     }
 
     // ==========================================
@@ -1248,10 +1513,16 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     // ==========================================
     async function removeBackgroundAI() {
         const activeObj = canvas.getActiveObject();
-        if(!activeObj || activeObj.type !== 'image') { alert("Please select a photo first."); return; }
+        if(!activeObj || activeObj.type !== 'image') { 
+            Swal.fire({ icon: 'warning', title: 'Oops...', text: 'Please select a photo first.' });
+            return; 
+        }
         
         const apiKey = document.getElementById('removeBgApiKey').value;
-        if(!apiKey || apiKey.trim() === '') { alert("API Key is missing."); return; }
+        if(!apiKey || apiKey.trim() === '') { 
+            Swal.fire({ icon: 'error', title: 'API Key Missing', text: 'Remove.bg API Key is missing in settings.' });
+            return; 
+        }
 
         showLoading(true, "AI body scanning removing background...");
 
@@ -1278,8 +1549,13 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                 
                 canvas.remove(activeObj); canvas.add(newImg); canvas.setActiveObject(newImg); 
                 showLoading(false);
+                saveHistory();
             });
-        } catch (error) { alert("❌ Failed to remove background. API key limit may have been exceeded."); showLoading(false); }
+        } catch (error) { 
+            console.error(error);
+            Swal.fire({ icon: 'error', title: 'AI Error', text: 'Failed to remove background. API key limit may have been exceeded or network failed.' }); 
+            showLoading(false); 
+        }
     }
 
     // ==========================================
@@ -1298,6 +1574,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         });
         
         canvas.add(text); canvas.setActiveObject(text); text.enterEditing(); text.selectAll(); syncTextPanel();
+        saveHistory();
     }
 
     function updateTextProps() {
@@ -1314,12 +1591,13 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                 scaleX: 1, scaleY: 1
             });
             document.getElementById('valFontSize').innerText = newSize; canvas.renderAll();
+            saveHistory();
         }
     }
 
     function clearTextBg() {
         const obj = canvas.getActiveObject();
-        if(obj && obj.type === 'i-text') { obj.set('backgroundColor', ''); canvas.renderAll(); }
+        if(obj && obj.type === 'i-text') { obj.set('backgroundColor', ''); canvas.renderAll(); saveHistory(); }
     }
 
     function syncTextPanel() {
@@ -1360,12 +1638,13 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             if(format === 'underline') { obj.set('underline', !obj.underline); }
             if(format === 'linethrough') { obj.set('linethrough', !obj.linethrough); }
             canvas.renderAll(); syncTextPanel();
+            saveHistory();
         }
     }
 
     function setTextAlign(alignment) {
         const obj = canvas.getActiveObject();
-        if(obj && obj.type === 'i-text') { obj.set('textAlign', alignment); canvas.renderAll(); syncTextPanel(); }
+        if(obj && obj.type === 'i-text') { obj.set('textAlign', alignment); canvas.renderAll(); syncTextPanel(); saveHistory(); }
     }
 
     // ==========================================
@@ -1395,306 +1674,6 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         }
     }
     
-    function updateEraserSize() {
-        if(canvas.isDrawingMode && isMasking) {
-            canvas.freeDrawingBrush.width = parseInt(document.getElementById('eraserSize').value) || 20;
-        }
-    }
-
-    function applyObjectRemoval() {
-        if(maskPathHistory.length === 0) { alert("Move the red brush over the object to be removed first."); return; }
-        
-        showLoading(true, "AI Inpainting (Removing Object)...");
-        
-        setTimeout(() => {
-            // Group the masks to get bounding box
-            let group = new fabric.Group(maskPathHistory);
-            let rect = group.getBoundingRect();
-            
-            // Hide masks temporarily so they aren't cloned
-            maskPathHistory.forEach(path => path.visible = false);
-            canvas.renderAll();
-
-            // Extract the background area slightly LARGER than the mask (for cloning surrounding pixels)
-            let cropDataUrl = canvas.toDataURL({ 
-                format: 'jpeg', left: rect.left - 15, top: rect.top - 15, 
-                width: rect.width + 30, height: rect.height + 30, multiplier: 1 
-            });
-
-            fabric.Image.fromURL(cropDataUrl, function(img) {
-                // Apply a heavy blur to the cloned patch to create a seamless blend (Simulated Inpainting)
-                let blurFilter = new fabric.Image.filters.Blur({ blur: 0.6 });
-                img.filters.push(blurFilter);
-                img.applyFilters();
-                
-                // Use the red masks as a clip path to only show the blurred replacement WHERE the user painted
-                let clipGroup = new fabric.Group(maskPathHistory.map(p => {
-                    let clone = fabric.util.object.clone(p);
-                    // Adjust coordinates relative to the new patch image
-                    clone.set({ left: clone.left - rect.left + 15, top: clone.top - rect.top + 15, visible: true, fill: 'black', stroke: 'black' });
-                    return clone;
-                }));
-
-                img.set({
-                    left: rect.left - 15, top: rect.top - 15,
-                    selectable: true, evented: true,
-                    clipPath: clipGroup // MAGIC: Only shows blurred pixels inside the brushed area!
-                });
-
-                // Delete original red masks
-                maskPathHistory.forEach(path => canvas.remove(path));
-                maskPathHistory = [];
-                
-                canvas.add(img); canvas.renderAll();
-                toggleEraserMask(); // Turn off mask mode
-                showLoading(false);
-            });
-        }, 500);
-    }
-
-    // ==========================================
-    // 10. AI STUDIO FEATURES
-    // ==========================================
-    function applyAIEnhance() {
-        let activeObj = canvas.getActiveObject();
-        if(!activeObj || activeObj.type !== 'image') { alert("Please select a photo first."); return; }
-        
-        let filter = new fabric.Image.filters.Brightness({ brightness: 0.1 });
-        let contrast = new fabric.Image.filters.Contrast({ contrast: 0.2 });
-        let sharpen = new fabric.Image.filters.Convolute({
-            matrix: [ 0, -0.5,  0,
-                     -0.5,  3, -0.5,
-                      0, -0.5,  0 ]
-        });
-        
-        activeObj.filters.push(filter, contrast, sharpen);
-        activeObj.applyFilters();
-        canvas.renderAll();
-    }
-
-    function applyAIColorize() {
-        let activeObj = canvas.getActiveObject();
-        if(!activeObj || activeObj.type !== 'image') { alert("Please select a photo first."); return; }
-        
-        let sepia = new fabric.Image.filters.Sepia();
-        let brightness = new fabric.Image.filters.Brightness({ brightness: 0.05 });
-        activeObj.filters.push(sepia, brightness);
-        activeObj.applyFilters();
-        canvas.renderAll();
-    }
-
-    // ==========================================
-    // 11. TYPOGRAPHY ENGINE
-    // ==========================================
-    function addText() {
-        const color = document.getElementById('textColorPicker').value;
-        const font = document.getElementById('fontFamily').value.replace(/['"]/g, '');
-        const size = parseInt(document.getElementById('fontSizeSlider').value) || 50;
-        
-        const text = new fabric.IText('Type here / Text', {
-            left: LOGICAL_W / 2, top: LOGICAL_H / 2, originX: 'center', originY: 'center',
-            fontFamily: font, fill: color, fontSize: size, fontWeight: 'bold',
-            borderColor: '#38bdf8', cornerColor: '#38bdf8', transparentCorners: false, padding: 10,
-            stroke: document.getElementById('textStrokeColor').value, strokeWidth: parseFloat(document.getElementById('textStrokeWidth').value)
-        });
-        
-        canvas.add(text); canvas.setActiveObject(text); text.enterEditing(); text.selectAll(); syncTextPanel();
-    }
-
-    function updateTextProps() {
-        const obj = canvas.getActiveObject();
-        if(obj && obj.type === 'i-text') {
-            let newSize = parseInt(document.getElementById('fontSizeSlider').value);
-            obj.set({
-                fill: document.getElementById('textColorPicker').value,
-                backgroundColor: document.getElementById('textBgColorPicker').value,
-                fontFamily: document.getElementById('fontFamily').value.replace(/['"]/g, ''),
-                fontSize: newSize,
-                stroke: document.getElementById('textStrokeColor').value,
-                strokeWidth: parseFloat(document.getElementById('textStrokeWidth').value),
-                scaleX: 1, scaleY: 1
-            });
-            document.getElementById('valFontSize').innerText = newSize; canvas.renderAll();
-        }
-    }
-
-    function clearTextBg() {
-        const obj = canvas.getActiveObject();
-        if(obj && obj.type === 'i-text') { obj.set('backgroundColor', ''); canvas.renderAll(); }
-    }
-
-    function syncTextPanel() {
-        const obj = canvas.getActiveObject();
-        if(obj && obj.type === 'i-text') {
-            let currentFont = obj.fontFamily;
-            if(currentFont.includes('Gujarati')) currentFont = "'Noto Sans Gujarati', sans-serif";
-            else if(currentFont.includes('Hind')) currentFont = "'Hind Vadodara', sans-serif";
-            else if(currentFont.includes('Mukta')) currentFont = "'Mukta Vaani', sans-serif";
-            else if(currentFont.includes('Rasa')) currentFont = "'Rasa', serif";
-            
-            try { document.getElementById('fontFamily').value = currentFont; } catch(e){}
-            
-            let safeSize = Math.round(obj.fontSize * obj.scaleX);
-            document.getElementById('fontSizeSlider').value = safeSize; document.getElementById('valFontSize').innerText = safeSize;
-            
-            document.getElementById('textColorPicker').value = obj.fill || '#000000'; 
-            document.getElementById('textBgColorPicker').value = obj.backgroundColor || '#ffffff';
-            document.getElementById('textStrokeColor').value = obj.stroke || '#ffffff'; 
-            document.getElementById('textStrokeWidth').value = obj.strokeWidth || 0;
-
-            document.getElementById('btnBold').classList.toggle('active', obj.fontWeight === 'bold'); 
-            document.getElementById('btnItalic').classList.toggle('active', obj.fontStyle === 'italic'); 
-            document.getElementById('btnUnderline').classList.toggle('active', obj.underline); 
-            document.getElementById('btnLinethrough').classList.toggle('active', obj.linethrough);
-
-            document.getElementById('btnAlignLeft').classList.toggle('active', obj.textAlign === 'left'); 
-            document.getElementById('btnAlignCenter').classList.toggle('active', obj.textAlign === 'center'); 
-            document.getElementById('btnAlignRight').classList.toggle('active', obj.textAlign === 'right');
-        }
-    }
-
-    function toggleTextFormat(format) {
-        const obj = canvas.getActiveObject();
-        if(obj && obj.type === 'i-text') {
-            if(format === 'bold') { obj.set('fontWeight', obj.fontWeight === 'bold' ? 'normal' : 'bold'); }
-            if(format === 'italic') { obj.set('fontStyle', obj.fontStyle === 'italic' ? 'normal' : 'italic'); }
-            if(format === 'underline') { obj.set('underline', !obj.underline); }
-            if(format === 'linethrough') { obj.set('linethrough', !obj.linethrough); }
-            canvas.renderAll(); syncTextPanel();
-        }
-    }
-
-    function setTextAlign(alignment) {
-        const obj = canvas.getActiveObject();
-        if(obj && obj.type === 'i-text') { obj.set('textAlign', alignment); canvas.renderAll(); syncTextPanel(); }
-    }
-
-    // ==========================================
-    // 12. DRAWING, SHAPES & UPLOADS
-    // ==========================================
-    function addUploadedImage(e) {
-        const file = e.target.files[0];
-        if(!file) return;
-        const reader = new FileReader();
-        reader.onload = function(f) {
-            fabric.Image.fromURL(f.target.result, function(img) {
-                let scale = 1;
-                if(img.width > LOGICAL_W * 0.8) scale = (LOGICAL_W * 0.8) / img.width;
-                if(img.height * scale > LOGICAL_H * 0.8) scale = (LOGICAL_H * 0.8) / img.height;
-                
-                img.set({
-                    left: LOGICAL_W / 2, top: LOGICAL_H / 2,
-                    originX: 'center', originY: 'center',
-                    scaleX: scale, scaleY: scale
-                });
-                
-                if (canvas.getObjects('image').length === 0 && !canvas.backgroundColor) {
-                    canvas.backgroundColor = '#ffffff'; 
-                    document.getElementById('bgColorPicker').value = '#ffffff';
-                }
-
-                canvas.add(img); canvas.setActiveObject(img); canvas.renderAll();
-                document.getElementById('fileUploadInput').value = '';
-            });
-        };
-        reader.readAsDataURL(file);
-    }
-    
-    async function removeBackgroundAI() {
-        let activeObj = canvas.getActiveObject();
-        if(!activeObj || activeObj.type !== 'image') {
-            alert("Please select an image on the canvas first.");
-            return;
-        }
-
-        const btn = document.querySelector('.ai-btn') || document.createElement('button');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-        btn.disabled = true;
-
-        showLoading(true, "AI is processing the background...<br><small style='color:#10b981;'>Please wait, this may take a few seconds.</small>");
-
-        let bgRemovedDataUrl = null;
-        const imgDataUrl = activeObj.toDataURL({ format: 'png', multiplier: 1 });
-
-        try {
-            const blob = await fetch(imgDataUrl).then(res => res.blob());
-            // Attempt edge WebAssembly background removal
-            const resultBlob = await (window.imglyBackgroundRemoval ? window.imglyBackgroundRemoval.removeBackground(blob) : window.imglyRemoveBackground(blob));
-            bgRemovedDataUrl = URL.createObjectURL(resultBlob);
-        } catch (error) {
-            console.warn("img.ly native AI failed, falling back to API...", error);
-        }
-
-        if(!bgRemovedDataUrl) {
-            try {
-                const base64Data = imgDataUrl.split(',')[1];
-                let apiKey = 'pSqcQaSbGwN4an41dkZSyHAs';
-                try {
-                    let inputKey = document.getElementById('removeBgApiKey');
-                    if (inputKey && inputKey.value) apiKey = inputKey.value;
-                    
-                    const keyRes = await fetch(APP_URL + 'get_remove_bg_key.php');
-                    const keyData = await keyRes.json();
-                    if(keyData.api_key) apiKey = keyData.api_key;
-                } catch(e) {}
-
-                const reqBody = JSON.stringify({ image_file_b64: base64Data, size: "auto" });
-
-                const response = await fetch('https://api.remove.bg/v1.0/removebg', {
-                    method: 'POST',
-                    headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    body: reqBody
-                });
-
-                if(!response.ok) throw new Error("API Limit Reached or Network error");
-                
-                const data = await response.json();
-                bgRemovedDataUrl = 'data:image/png;base64,' + data.data.result_b64;
-            } catch(apiErr) {
-                console.error(apiErr);
-                alert("❌ Both Edge AI and Cloud AI failed. Please try a different browser or image.");
-                showLoading(false);
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-                return;
-            }
-        }
-
-        fabric.Image.fromURL(bgRemovedDataUrl, function(newImg) {
-            newImg.set({
-                originX: 'center', originY: 'center',
-                left: activeObj.left, top: activeObj.top,
-                scaleX: activeObj.scaleX, scaleY: activeObj.scaleY,
-                angle: activeObj.angle,
-                cornerColor: '#38bdf8', borderColor: '#38bdf8', transparentCorners: false
-            });
-
-            newImg.filters = activeObj.filters || [];
-            newImg.applyFilters();
-
-            canvas.remove(activeObj);
-            canvas.add(newImg);
-            canvas.setActiveObject(newImg);
-            canvas.renderAll();
-            
-            showLoading(false);
-            btn.innerHTML = '<i class="fas fa-check"></i> Removed!';
-            btn.disabled = false;
-            
-            setTimeout(() => { btn.innerHTML = originalText; }, 2000);
-        });
-    }
-
-
-    function toggleDrawMode() {
-        canvas.isDrawingMode = !canvas.isDrawingMode; const btn = document.getElementById('btnDrawMode');
-        if (canvas.isDrawingMode) { btn.innerHTML = '<i class="fas fa-times"></i> Stop Drawing'; btn.style.background = '#ef4444'; updateBrush(); } 
-        else { btn.innerHTML = '<i class="fas fa-pen"></i> Start Drawing Mode'; btn.style.background = '#10b981'; }
-    }
-    
-    function updateBrush() { if (canvas.isDrawingMode && !isMasking) { canvas.freeDrawingBrush.color = document.getElementById('brushColorPicker').value; canvas.freeDrawingBrush.width = parseInt(document.getElementById('brushSize').value) || 5; } }
-
     function addShape(type) {
         const color = document.getElementById('shapeColorPicker').value;
         const props = { left: LOGICAL_W/2, top: LOGICAL_H/2, fill: color, originX: 'center', originY: 'center', borderColor: '#38bdf8', cornerColor: '#38bdf8', transparentCorners: false };
@@ -1708,7 +1687,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         }
         if(type === 'line') { shape = new fabric.Line([0, 0, 300, 0], { left: LOGICAL_W/2, top: LOGICAL_H/2, stroke: color, strokeWidth: 10, originX: 'center', originY: 'center', borderColor: '#38bdf8', cornerColor: '#38bdf8', transparentCorners: false }); }
         
-        if(shape) { canvas.add(shape); canvas.setActiveObject(shape); }
+        if(shape) { canvas.add(shape); canvas.setActiveObject(shape); saveHistory(); }
     }
 
     function addCollageGrid(num, type) {
@@ -1739,6 +1718,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             canvas.add(rect);
         });
         canvas.renderAll();
+        saveHistory();
     }
     
     function updateGridBorders() {
@@ -1748,11 +1728,35 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             if(obj.isGrid) { obj.set({strokeWidth: borderW, stroke: borderC}); } 
         });
         canvas.renderAll();
+        saveHistory();
     }
 
     // ==========================================
-    // 13. EXPORT HD IMAGE
+    // 13. OBJECT NAMING
     // ==========================================
+    function updateObjectName() {
+        const obj = canvas.getActiveObject();
+        if (obj) {
+            obj.set('customId', document.getElementById('objectNameInput').value);
+            canvas.renderAll();
+            saveHistory();
+        }
+    }
+
+    function syncNamingPanel() {
+        const obj = canvas.getActiveObject();
+        if (obj) {
+            document.getElementById('objectNameInput').value = obj.customId || '';
+        } else {
+            document.getElementById('objectNameInput').value = '';
+        }
+    }
+
+    // ==========================================
+    // 14. EXPORT HD IMAGE
+    // ==========================================
+    // Removed duplicate definitions
+
     async function handleExport() {
         if(cropZone) cancelCrop();
         if(isMasking) toggleEraserMask();
@@ -1761,34 +1765,136 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = false; });
         canvas.discardActiveObject(); canvas.renderAll();
 
-        if (userRole !== 'admin') {
-            let confirmMsg = `${currency}${cardCost} will be deducted from wallet to download HD photo.\nDo you want to proceed?`;
-            if (!confirm(confirmMsg)) {
-                canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll(); return; 
-            }
-            try {
-                let formData = new FormData(); formData.append('service_type', 'Pro Photo Studio Export');
-                let response = await fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
-                let text = await response.text(); let result = JSON.parse(text);
-                if (!result.success) { alert("❌ Error: " + result.message); return; }
-            } catch (error) { alert("❌ Network error."); return; }
+        async function processFinalDownload() {
+            showLoading(true, "Saving High Quality Masterpiece...");
+            setTimeout(() => {
+                const currentZoom = canvas.getZoom();
+                canvas.setZoom(1); canvas.setWidth(LOGICAL_W); canvas.setHeight(LOGICAL_H);
+
+                const dataUrl = canvas.toDataURL({ format: canvas.backgroundColor ? 'jpeg' : 'png', quality: 1.0, multiplier: 2 });
+                
+                canvas.setZoom(currentZoom); fitCanvasToScreen();
+                canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll();
+
+                const link = document.createElement('a'); link.download = `Studio_Masterpiece_${Date.now()}.${canvas.backgroundColor ? 'jpg' : 'png'}`; link.href = dataUrl; link.click();
+                showLoading(false);
+            }, 800);
         }
 
-        showLoading(true, "Saving High Quality Masterpiece...");
-
-        setTimeout(() => {
-            const currentZoom = canvas.getZoom();
-            canvas.setZoom(1); canvas.setWidth(LOGICAL_W); canvas.setHeight(LOGICAL_H);
-
-            const dataUrl = canvas.toDataURL({ format: canvas.backgroundColor ? 'jpeg' : 'png', quality: 1.0, multiplier: 2 });
+        if (!isGuest && userRole !== 'admin' && userRole !== 'master_admin') {
+            let actualCost = serviceRate;
+            let willUsePoints = false;
             
-            canvas.setZoom(currentZoom); fitCanvasToScreen();
-            canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll();
-
-            const link = document.createElement('a'); link.download = `Studio_Masterpiece_${Date.now()}.${canvas.backgroundColor ? 'jpg' : 'png'}`; link.href = dataUrl; link.click();
-            showLoading(false);
-        }, 800);
+            if (actualCost <= 0) {
+                 willUsePoints = false;
+            } 
+            else if (userBalance >= actualCost) {
+                const result = await Swal.fire({
+                    title: 'Confirm Purchase',
+                    text: `${currency}${actualCost} will be deducted from your wallet to download this masterpiece.`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Deduct & Download',
+                    cancelButtonText: 'No, Cancel'
+                });
+                if (!result.isConfirmed) {
+                    canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll();
+                    return;
+                }
+            } 
+            else if (pointsRate > 0 && userPoints >= pointsRate) {
+                const result = await Swal.fire({
+                    title: 'Use Points?',
+                    text: `You don't have enough Wallet Balance, but you have ${userPoints} Points. ${pointsRate} Points will be deducted to run this task.`,
+                    icon: 'info',
+                    showCancelButton: true,
+                    confirmButtonText: 'Use Points',
+                    cancelButtonText: 'Cancel'
+                });
+                if (!result.isConfirmed) {
+                    canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll();
+                    return;
+                }
+                willUsePoints = true;
+            }
+            else {
+                Swal.fire({ 
+                    icon: 'error', 
+                    title: 'Insufficient Funds', 
+                    text: `You need ${currency}${actualCost} or ${pointsRate} Points to download this file.`
+                });
+                canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll();
+                return;
+            }
+            
+            triggerPayment(willUsePoints);
+        } else if (isGuest) {
+            const result = await Swal.fire({
+                title: 'Confirm Guest Download',
+                text: "Confirm using your single free daily guest pass to download this Masterpiece?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Use Pass',
+                cancelButtonText: 'Cancel'
+            });
+            if (!result.isConfirmed) {
+                canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll();
+                return;
+            }
+            triggerPayment(false);
+        } else {
+            // Admin
+            triggerPayment(false);
+        }
     }
+
+    async function triggerPayment(willUsePoints) {
+        try {
+            let formData = new FormData();
+            formData.append('service_slug', 'photo_studio');
+            formData.append('service_type', 'Photo Studio Pro');
+            if (willUsePoints) formData.append('use_points', '1');
+
+            let response = await fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
+            let text = await response.text(); 
+            
+            try {
+                let result = JSON.parse(text);
+                if (result.success) {
+                    processFinalDownload();
+                    if(isGuest || result.cost <= 0) {
+                        Swal.fire({ icon: 'success', title: 'Success', text: result.message || "✅ Guest pass used!" });
+                    } else {
+                        Swal.fire({ 
+                            icon: 'success', 
+                            title: 'Downloaded!', 
+                            html: `Paid from: <b>${result.deducted_type === 'points' ? result.cost + ' Pts' : currency + result.cost}</b>` 
+                        });
+                    }
+                } else { 
+                    Swal.fire({ icon: 'error', title: 'Error', text: result.message }); 
+                }
+            } catch (jsonError) { 
+                console.error("JSON Error: ", text);
+                Swal.fire({ icon: 'error', title: 'Parse Error', text: 'Server parsing error. Please check internet connection.' }); 
+            }
+        } catch (error) { 
+            Swal.fire({ icon: 'error', title: 'Network Error', text: 'Network error processing wallet.' }); 
+            canvas.getObjects().forEach(obj => { if(obj.isGrid) obj.visible = true; }); canvas.renderAll();
+        }
+    }
+
+    // ==========================================
+    // 15. EVENT BINDINGS (Live Editor & History)
+    // ==========================================
+    // Consolidated Automatic History & Event Bindings
+    canvas.on('object:added', saveHistory);
+    canvas.on('object:modified', saveHistory);
+    canvas.on('object:removed', saveHistory);
+    canvas.on('path:created', saveHistory);
+
+    // Initial state save
+    setTimeout(saveHistory, 1000);
 </script>
 
 <script>
@@ -1796,7 +1902,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     function sysChangeZoom(amount) {
         sysCurrentZoom += amount;
         if(sysCurrentZoom < 0.2) sysCurrentZoom = 0.2;
-        if(sysCurrentZoom > 3.0) sysCurrentZoom = 3.0;
+        if(sysCurrentZoom > 5.0) sysCurrentZoom = 5.0;
         sysApplyZoom();
     }
     function sysResetZoom() {
@@ -1804,13 +1910,10 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         sysApplyZoom();
     }
     function sysApplyZoom() {
-        const targets = document.querySelectorAll('.canvas-container, .a4-page, .card-preview, canvas#mainCanvas');
-        targets.forEach(el => {
-            el.style.transform = `scale(${sysCurrentZoom})`;
-            el.style.transformOrigin = 'top center';
-            el.style.transition = 'transform 0.2s ease';
-            el.style.marginBottom = '50px'; // Prevent cutoffs when scaled up
-        });
+        // Optimized: Use Fabric.js native zoom instead of CSS transforms
+        // This fixes coordinate offset bugs with tools and drawing.
+        canvas.setZoom(sysCurrentZoom);
+        canvas.renderAll();
     }
 </script>
 </body>

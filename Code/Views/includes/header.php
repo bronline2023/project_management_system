@@ -3,19 +3,42 @@
  * views/includes/header.php
  * FIXED: Added Mobile Sidebar CSS & Overlay Styles
  */
+
+// Fetch settings for SEO
+$pdo_header = connectDB();
+$site_settings = fetchOne($pdo_header, "SELECT app_name, seo_title, seo_description, seo_keywords, google_site_verification, seo_global_code_head, seo_global_code_body FROM settings WHERE id = 1");
+
+$appName = $site_settings['app_name'] ?? 'B R Online Services';
+$seoTitle = !empty($site_settings['seo_title']) ? $site_settings['seo_title'] : $appName;
+$pageDisplayTitle = isset($pageTitle) ? htmlspecialchars($pageTitle) . ' | ' . $appName : htmlspecialchars($seoTitle);
 ?>
 <!doctype html>
 <html lang="en">
 <head>
-    <title><?= isset($pageTitle) ? htmlspecialchars($pageTitle) : 'B R Online Services' ?></title>
     <meta charset="utf-8">
-    <link rel="apple-touch-icon" sizes="114x114" href="/apple-icon-114x114.png">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    
+    <!-- SEO Meta Tags -->
+    <title><?= $pageDisplayTitle ?></title>
+    <meta name="description" content="<?= htmlspecialchars($site_settings['seo_description'] ?? '') ?>">
+    <meta name="keywords" content="<?= htmlspecialchars($site_settings['seo_keywords'] ?? '') ?>">
+    <?php if(!empty($site_settings['google_site_verification'])): ?>
+    <meta name="google-site-verification" content="<?= htmlspecialchars($site_settings['google_site_verification']) ?>" />
+    <?php endif; ?>
+
+    <!-- Custom Global Head Code -->
+    <?= $site_settings['seo_global_code_head'] ?? '' ?>
+
+    <link rel="apple-touch-icon" sizes="114x114" href="/apple-icon-114x114.png">
+    <link rel="icon" type="image/png" href="<?= ASSETS_URL ?>img/br_favicon.png">
 
     <link href="https://fonts.googleapis.com/css?family=Poppins:300,400,500,600,700,800,900" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <link rel="stylesheet" href="<?= ASSETS_URL ?>css/style.css"> 
     <link rel="stylesheet" href="<?= ASSETS_URL ?>css/poster_styles.css">
@@ -24,14 +47,19 @@
         /* --- DIGITAL CLOCK --- */
         .digital-clock {
             font-family: 'Courier New', Courier, monospace;
-            background: #e9ecef;
-            padding: 5px 10px;
-            border-radius: 5px;
+            background: rgba(233, 236, 239, 0.7);
+            padding: 4px 8px;
+            border-radius: 6px;
             color: #333;
-            font-weight: bold;
-            font-size: 1rem;
+            font-weight: 600;
+            font-size: 0.9rem;
             display: inline-block;
+            backdrop-filter: blur(4px);
         }
+        @media (max-width: 576px) {
+            .digital-clock { font-size: 0.8rem; padding: 2px 6px; }
+        }
+
 
         /* --- MOBILE SIDEBAR LOGIC --- */
         #sidebar {
@@ -83,4 +111,6 @@
     </style>
 </head>
 <body>
+    <!-- Custom Global Body Code -->
+    <?= $site_settings['seo_global_code_body'] ?? '' ?>
 <div class="overlay"></div>

@@ -1,32 +1,47 @@
 <?php
-require_once CORE_INCLUDES_PATH . 'service_paywall.php';
-enforce_service_paywall('smart_card');
-
 /**
  * views/smart_card.php
  * MASTER PRO VERSION: Free Manual Selection + Forced 88x54mm HD Output + Zoom & Pan Controls
  */
 
+require_once __DIR__ . '/../../config.php';
+require_once MODELS_PATH . 'db.php';
+
 $pdo = connectDB();
-$card_cost = 10.00; 
 $currency = '₹';
 $user_role = $_SESSION['user_role'] ?? 'guest';
 
+$service_rate = 2.00;
+$points_rate = 0;
+$user_balance = 0.00;
+$user_points = 0;
+$is_custom_rate = false;
+$custom_poster_rate = 0.00;
+
 try {
-    $stmt = $pdo->query("SELECT poster_generation_cost, currency_symbol FROM settings LIMIT 1");
-    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($settings) {
-        $card_cost = isset($settings['poster_generation_cost']) ? (float)$settings['poster_generation_cost'] : 10.00;
-        $currency = isset($settings['currency_symbol']) ? $settings['currency_symbol'] : '₹';
+    $stmt_rate = $pdo->prepare("SELECT price, points_price FROM digital_service_rates WHERE service_slug = 'smart_card' AND is_active = 1");
+    $stmt_rate->execute();
+    $rate_data = $stmt_rate->fetch();
+    if ($rate_data) {
+        $service_rate = (float)$rate_data['price'];
+        $points_rate = (int)$rate_data['points_price'];
     }
 
+    $stmt = $pdo->query("SELECT currency_symbol, remove_bg_api_key, app_name, app_logo_url FROM settings LIMIT 1");
+    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($settings && isset($settings['currency_symbol'])) { $currency = $settings['currency_symbol']; }
+
     if (isset($_SESSION['user_id'])) {
-        $stmt_user = $pdo->prepare("SELECT custom_poster_rate FROM users WHERE id = ?");
+        $stmt_user = $pdo->prepare("SELECT balance, poster_points, custom_poster_rate FROM users WHERE id = ?");
         $stmt_user->execute([$_SESSION['user_id']]);
         $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
-        
-        if ($user_data && isset($user_data['custom_poster_rate']) && $user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
-            $card_cost = (float)$user_data['custom_poster_rate'];
+        if ($user_data) {
+            $user_balance = (float)$user_data['balance'];
+            $user_points = (int)$user_data['poster_points'];
+            if ($user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
+                $custom_poster_rate = (float)$user_data['custom_poster_rate'];
+                $is_custom_rate = true;
+            }
         }
     }
 } catch (Exception $e) {}
@@ -55,6 +70,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digital Studio</title>
+    <link rel="icon" type="image/png" href="<?= ASSETS_URL ?>img/br_favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.img.ly/packages/@imgly/background-removal@1.5.5/dist/index.js"></script>
 </head>
@@ -112,7 +128,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         .studio-wrapper, .builder-wrapper { flex-direction: column !important; height: auto !important; width: 100vw !important; overflow-x: hidden; }
         .studio-panel { width: 100% !important; min-width: 100% !important; height: auto !important; max-height: 55vh; overflow-y: auto; border-right: none !important; border-bottom: 2px solid #cbd5e1; }
         .workspace { width: 100% !important; height: 45vh !important; min-height: 45vh !important; padding: 10px !important; overflow-y: auto; }
-        .canvas-container { max-width: 100% !important; height: auto !important; margin: 0 auto; }
+        .studio-canvas-layout { max-width: 100% !important; height: auto !important; margin: 0 auto; }
         canvas { max-width: 100% !important; height: auto !important; }
         /* Scale down Previews */
         .a4-page, .card-preview { max-width: 100%; transform: scale(0.65) !important; transform-origin: top center !important; margin-bottom: 0 !important; }
@@ -120,6 +136,75 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         .action-btns { flex-wrap: wrap; justify-content: center; width: 100%; }
         .btn-export { width: 100%; margin-top: 10px; }
     }
+
+    /* 🚀 NEW CATEGORY SELECTION UI 🚀 */
+    /* 🚀 PREMIUM CATEGORY SELECTION UI 🚀 */
+    .category-selection-overlay {
+        position: fixed; top: 65px; left: 0; width: 100%; height: calc(100vh - 65px);
+        background: radial-gradient(circle at center, rgba(30, 41, 59, 1) 0%, rgba(15, 23, 42, 1) 100%); 
+        z-index: 999; overflow-y: auto; padding: 40px 20px;
+        display: flex; flex-direction: column; align-items: center;
+        backdrop-filter: blur(25px);
+    }
+    .category-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 30px; max-width: 1400px; width: 100%; margin-top: 40px;
+        padding-bottom: 80px;
+    }
+    .category-card {
+        background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 28px; padding: 40px 25px; cursor: pointer; transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        text-align: center; backdrop-filter: blur(20px); position: relative; overflow: hidden;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .category-card:hover {
+        transform: translateY(-15px) scale(1.03); background: rgba(59, 130, 246, 0.12);
+        border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6);
+    }
+    .category-card::after {
+        content: ''; position: absolute; inset: 0; border-radius: 28px;
+        padding: 2px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.6), transparent, rgba(16, 185, 129, 0.6));
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor; mask-composite: exclude;
+        opacity: 0; transition: 0.6s;
+    }
+    .category-card:hover::after { opacity: 1; }
+    
+    .category-logo {
+        height: 100px; width: 100%; margin-bottom: 25px; object-fit: contain;
+        filter: drop-shadow(0 15px 20px rgba(0,0,0,0.4)); transition: 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .category-card:hover .category-logo { transform: scale(1.2) rotate(2deg); filter: drop-shadow(0 20px 40px rgba(59,130,246,0.5)); }
+    
+    .category-title { font-size: 22px; font-weight: 900; color: #f8fafc; margin-bottom: 12px; letter-spacing: -0.8px; }
+    .category-desc { font-size: 14px; color: #94a3b8; line-height: 1.6; font-weight: 500; opacity: 0.8; }
+    
+    .category-badge {
+        position: absolute; top: 25px; right: 25px; font-size: 11px; font-weight: 900;
+        background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; 
+        padding: 6px 14px; border-radius: 40px; text-transform: uppercase;
+        box-shadow: 0 6px 15px rgba(59,130,246,0.4); letter-spacing: 1.5px;
+    }
+    .selection-header { text-align: center; margin-bottom: 20px; max-width: 900px; }
+    .selection-header h1 { 
+        font-size: 52px; font-weight: 1000; margin-bottom: 20px;
+        background: linear-gradient(to right, #fff 20%, #60a5fa 50%, #fff 80%);
+        background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        animation: glow 4s linear infinite; letter-spacing: -2px;
+        text-shadow: 0 10px 30px rgba(59, 130, 246, 0.2);
+    }
+    @keyframes glow { to { background-position: 200% center; } }
+    .selection-header p { font-size: 20px; color: #cbd5e1; font-weight: 600; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+    
+    .sidebar-logo { height: 35px; width: auto; object-fit: contain; border-radius: 4px; }
+    .btn-back-selection {
+        font-size: 11px; color: #3b82f6; cursor: pointer; font-weight: 800;
+        text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px;
+        transition: 0.3s; margin-top: 8px; padding: 4px 10px; border-radius: 8px; background: rgba(59,130,246,0.1); width: fit-content;
+    }
+    .btn-back-selection:hover { background: rgba(59,130,246,0.2); transform: translateX(-4px); color: #60a5fa; }
 </style>
 
 <?php $page_title = 'Smart PVC Studio'; require_once INCLUDES_PATH.'digital_header.php'; ?>
@@ -131,19 +216,17 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             <div id="step1Controls">
                 <div class="control-box">
                     <span class="control-title"><i class="fas fa-file-invoice"></i> 1. Document Intel</span>
-                    <label class="form-label">Select Government Card Format</label>
-                    <select class="form-control fw-bold" style="color: #60a5fa;" id="cardType">
-                        <option value="aadhaar_2026">Aadhaar Card (New 2026 Spec)</option>
-                        <option value="aadhaar_2024">Aadhaar Card (Standard 2024)</option>
-                        <option value="aadhaar_pvc_official">Aadhaar PVC (Official Side-by-Side)</option>
-                        <option value="aadhaar_pvc_stacked">Aadhaar PVC (Official Stacked)</option>
-                        <option value="pan_new">e-PAN (New Format)</option>
-                        <option value="voter_color">Voter ID (Smart Color)</option>
-                        <option value="driving_license">Driving License (Smart Card)</option>
-                        <option value="eshram_pro">e-Shram (Enterprise HD)</option>
-                        <option value="ayushman_v2">Ayushman Card (Gold v2)</option>
-                        <option value="other">Manual Custom Scan</option>
-                    </select>
+                    <label class="form-label">Selected Card Format</label>
+                    <div id="selectedFormatDisplay" class="p-3 mb-3 rounded border border-primary bg-primary bg-opacity-10 d-flex align-items-center gap-3" style="background: rgba(59, 130, 246, 0.05) !important; border: 1px solid rgba(59, 130, 246, 0.3) !important;">
+                        <img id="selectedLogo" src="<?= BASE_URL ?>assets/img/logos/aadhaar.png" class="sidebar-logo">
+                        <div class="flex-grow-1">
+                            <div id="selectedTitle" class="fw-bold text-white small">Aadhaar Card (New 2026)</div>
+                            <div class="btn-back-selection" onclick="showCategorySelection()">
+                                <i class="fas fa-arrow-left"></i> Change Format
+                            </div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="cardType" value="aadhaar_2026">
 
                     <label class="form-label mt-2">Upload Original PDF/Image</label>
                     <input type="file" id="pdfFile" class="form-control" accept="application/pdf, image/*">
@@ -216,7 +299,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             <?php if(isset($_SESSION['user_id'])): ?>
             <button class="btn-main" style="width: 100%; background: linear-gradient(135deg, #3b82f6, #2563eb); font-size: 14px; border-radius: 10px; margin-bottom: 10px; padding: 12px; color: white; border: none; font-weight: bold; cursor: pointer;" onclick="saveDraft(this)"><i class="fas fa-save"></i> Save Draft</button>
             <?php endif; ?>
-            <button class="btn-export" onclick="handleExport()"><i class="fas fa-download"></i> Save and download <?= (!isset($_SESSION['user_id']) && isset($_COOKIE['guest_service_used'])) ? '' : '('.$currency.$card_cost.')' ?></button>
+            <button class="btn-export" onclick="handleExport()"><i class="fas fa-download"></i> Save and download <?= (!isset($_SESSION['user_id']) && isset($_COOKIE['guest_service_used'])) ? '' : '('.$currency.$service_rate.')' ?></button>
         </div>
     </div>
 
@@ -227,13 +310,97 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         <button type="button" onclick="sysResetZoom()" style="background: #f1f5f9; border: 1px solid #94a3b8; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 10px; font-weight: bold; transition: 0.2s;">100%</button>
         <button type="button" onclick="sysChangeZoom(-0.1)" style="background: #f1f5f9; border: 1px solid #94a3b8; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-weight: bold; transition: 0.2s;">➖</button>
     </div>
-    
-    <div class="canvas-container" style="margin: 0 auto; overflow: visible;">
+    <div class="studio-canvas-layout" style="margin: 0 auto; overflow: visible;">
         <canvas id="mainCanvas"></canvas>
     </div>
 </div>
 
 </div>
+
+<!-- 🚀 CATEGORY SELECTION OVERLAY 🚀 -->
+<div id="categorySelection" class="category-selection-overlay">
+    <div class="selection-header">
+        <div class="d-flex justify-content-center gap-3 mb-4">
+            <a href="<?= $back_url ?>" class="btn btn-outline-light rounded-pill px-4 btn-sm fw-bold border-opacity-25" style="border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05);">
+                <i class="fas fa-arrow-left me-2"></i> Dashboard
+            </a>
+            <button class="btn btn-outline-danger rounded-pill px-4 btn-sm fw-bold border-opacity-25" onclick="document.getElementById('categorySelection').style.display='none'" id="closeSelectBtn" style="display:none; border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.05);">
+                <i class="fas fa-times me-2"></i> Close
+            </button>
+        </div>
+        <h1 class="text-white">Select Smart Card Format</h1>
+        <p class="text-muted">Choose the type of government document you want to convert into a PVC smart card.</p>
+    </div>
+
+    <div class="category-grid">
+        <div class="category-card" onclick="selectCategory('aadhaar_2026', 'Aadhaar Card (New 2026)', '<?= BASE_URL ?>assets/img/logos/aadhaar.png')">
+            <div class="category-badge">Recommended</div>
+            <img src="<?= BASE_URL ?>assets/img/logos/aadhaar.png" class="category-logo" alt="Aadhaar">
+            <div class="category-title">Aadhaar (2026)</div>
+            <div class="category-desc">Latest e-Aadhaar PDF format with automated AI cropping.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('pan_new', 'e-PAN Card', '<?= BASE_URL ?>assets/img/logos/pan.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/pan.png" class="category-logo" alt="e-PAN">
+            <div class="category-title">e-PAN Card</div>
+            <div class="category-desc">New NSDL/UTI e-PAN PDF format segmentation.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('voter_color', 'Voter ID Card', '<?= BASE_URL ?>assets/img/logos/voter_id.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/voter_id.png" class="category-logo" alt="Voter ID">
+            <div class="category-title">Voter ID</div>
+            <div class="category-desc">Modern Smart Voter ID (EPIC) PDF format.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('ayushman_v2', 'Ayushman Card', '<?= BASE_URL ?>assets/img/logos/ayushman.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/ayushman.png" class="category-logo" alt="Ayushman">
+            <div class="category-title">Ayushman Bharat</div>
+            <div class="category-desc">PMJAY Gold Card v2 conversion for PVC printing.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('janaadhar', 'Jan Aadhaar Card', '<?= BASE_URL ?>assets/img/logos/janaadhar.png')">
+            <div class="category-badge">Rajasthan</div>
+            <img src="<?= BASE_URL ?>assets/img/logos/janaadhar.png" class="category-logo" alt="Jan Aadhaar">
+            <div class="category-title">Jan Aadhaar</div>
+            <div class="category-desc">Rajasthan state identity card PDF cropping.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('abha', 'ABHA Health Card', '<?= BASE_URL ?>assets/img/logos/abha.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/abha.png" class="category-logo" alt="ABHA">
+            <div class="category-title">ABHA Card</div>
+            <div class="category-desc">Ayushman Bharat Health Account identity card.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('uan_epfo', 'UAN / EPFO Card', '<?= BASE_URL ?>assets/img/logos/uan.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/uan.png" class="category-logo" alt="UAN">
+            <div class="category-title">UAN Card</div>
+            <div class="category-desc">EPFO Universal Account Number card cropping.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('ration_card', 'Ration Card', '<?= BASE_URL ?>assets/img/logos/ration.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/ration.png" class="category-logo" alt="Ration Card">
+            <div class="category-title">Ration Card</div>
+            <div class="category-desc">Universal layout for National Food Security cards.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('driving_license', 'Driving License', '<?= BASE_URL ?>assets/img/logos/dl_emblem.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/dl_emblem.png" class="category-logo" alt="Driving License">
+            <div class="category-title">Driving License</div>
+            <div class="category-desc">High-quality DL scan or digital document conversion.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('eshram_pro', 'e-Shram HD', '<?= BASE_URL ?>assets/img/logos/eshram.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/eshram.png" class="category-logo" alt="e-Shram">
+            <div class="category-title">e-Shram</div>
+            <div class="category-desc">Official e-Shram worker card with enterprise HD quality.</div>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('other', 'Manual Custom', '<?= BASE_URL ?>assets/img/logos/manual.png')">
+            <img src="<?= BASE_URL ?>assets/img/logos/manual.png" class="category-logo" style="filter: brightness(0.8);" alt="Manual">
+            <div class="category-title">Manual / Other</div>
+            <div class="category-desc">For any other document types with manual crop adjustment.</div>
+        </div>
+    </div>
 </div>
 
 <!-- Loading Overlay -->
@@ -251,54 +418,67 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     const baseUrl = '<?= BASE_URL ?>';
     const userRole = '<?= $_SESSION['user_role'] ?? 'guest' ?>';
     const currency = '<?= $currency ?>';
-    const cardCost = '<?= number_format($card_cost, 2, '.', '') ?>';
+    const serviceRate = <?= $service_rate ?>;
+    const pointsRate = <?= $points_rate ?>;
+    const userBalance = <?= $user_balance ?>;
+    const userPoints = <?= $user_points ?>;
+    const isCustomRate = <?= $is_custom_rate ? 'true' : 'false' ?>;
+    const customRate = <?= $custom_poster_rate ?>;
+    const cardCost = serviceRate;
     
     // Standard ID Card: 85.6mm x 54mm (CR80) or 88mm x 54mm depending on the config
     const CARD_ASPECT_RATIO = 1040 / 638; 
     const EXPORT_WIDTH = 1040; 
     const EXPORT_HEIGHT = 638;
 
+    let canvas = null;
+    let frontCropBox = null, backCropBox = null;
+    let loadedImageObj = null;
+    let frontCardObj = null, backCardObj = null;
+
+    // --- UI UTILITIES ---
+    function showLoading(show, text = "Processing... Please wait.") {
+        const el = document.getElementById('loadingOverlay');
+        const txt = document.getElementById('loadingText');
+        if (el) el.style.display = show ? 'flex' : 'none';
+        if (txt && text) txt.innerText = text;
+    }
+    const hideLoader = () => showLoading(false);
+    const showLoader = (text) => showLoading(true, text);
+
+    function forceSyncAll() {
+        if(typeof syncUIFromCurrentCanvas === 'function') syncUIFromCurrentCanvas();
+    }
+
     // Cross-Domain Worker Fix for local/remote environments
     const pdfWorkerUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     const workerBlob = new Blob([`importScripts('${pdfWorkerUrl}');`], { type: 'text/javascript' });
     pdfjsLib.GlobalWorkerOptions.workerPort = new Worker(URL.createObjectURL(workerBlob));
 
-    let canvas = new fabric.Canvas('mainCanvas', {
-        preserveObjectStacking: true,
-        selection: false,
-        backgroundColor: '#f1f5f9'
-    });
-
-    let loadedImageObj = null;
-    let frontCardObj = null;
-    let backCardObj = null;
-    let frontCropBox = null;
-    let backCropBox = null;
-
-    canvas.setDimensions({ width: 900, height: window.innerHeight - 100 });
-
-    canvas.on('selection:created', onObjectSelected);
-    canvas.on('selection:updated', onObjectSelected);
-    canvas.on('selection:cleared', function() { document.getElementById('textEditControls').style.display = 'none'; });
-
-    function onObjectSelected(opt) {
-        if (opt.target && opt.target.type === 'text') {
-            document.getElementById('textEditControls').style.display = 'block';
-            document.getElementById('textColor').value = opt.target.fill;
-        } else {
-            document.getElementById('textEditControls').style.display = 'none';
+    // Category Selection Logic
+    function selectCategory(type, title, logoUrl) {
+        document.getElementById('cardType').value = type;
+        document.getElementById('selectedTitle').innerText = title;
+        document.getElementById('selectedLogo').src = logoUrl;
+        document.getElementById('categorySelection').style.display = 'none';
+        
+        // If an image was already loaded, re-detect layout
+        if (loadedImageObj) {
+            autoDetectLayout();
         }
     }
 
-    function addMobileNumber() {
-        const text = new fabric.IText('Mo. +91 ', {
-            left: canvas.width/2 - 100, top: 150, 
-            fontSize: 22, fontFamily: 'Arial', fontWeight: 'bold', 
-            fill: '#000000', backgroundColor: '#ffffff',
-            padding: 5, cornerSize: 8,
-            selectable: true, customId: 'mobile_num'
-        });
-        canvas.add(text); canvas.setActiveObject(text); canvas.renderAll();
+    function showCategorySelection() {
+        const el = document.getElementById('categorySelection');
+        if (el) {
+            el.style.display = 'flex';
+            el.scrollTop = 0; // 🚀 Force scroll to top
+            
+            // Show close button if we already have a file or it's a re-selection
+            if(document.getElementById('cardType').value) {
+                document.getElementById('closeSelectBtn').style.display = 'inline-block';
+            }
+        }
     }
 
     function updateSelectedText() {
@@ -310,7 +490,10 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 
     async function removeBgFromSelected() {
         const obj = canvas.getActiveObject();
-        if (!obj || obj.type !== 'image') { alert('Please select the photo on the card first.'); return; }
+        if (!obj || obj.type !== 'image') { 
+            Swal.fire({ icon: 'warning', title: 'Oops...', text: 'Please select the photo on the card first.' });
+            return; 
+        }
         
         showLoading(true, "AI Removing Background...");
         try {
@@ -339,12 +522,12 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                 });
             } else {
                 showLoading(false);
-                alert("AI failed to process. Try again or use high-contrast image.");
+                Swal.fire({ icon: 'error', title: 'AI Failed', text: 'AI failed to process. Try again or use a high-contrast image.' });
             }
         } catch (err) {
             console.error(err);
             showLoading(false);
-            alert("AI Error: " + err.message);
+            Swal.fire({ icon: 'error', title: 'AI Error', text: err.message });
         }
     }
 
@@ -390,33 +573,19 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         .finally(() => { btn.innerHTML = originalHtml; btn.disabled = false; });
     }
 
-    // Load Draft Logic
+    // Load Draft Data (Logic moved inside window.load below)
     const draftJson = <?= $loaded_draft_json ? $loaded_draft_json : 'null' ?>;
-    if (draftJson) {
-        showLoading(true, "Restoring Draft...");
-        try {
-            canvas.loadFromJSON(draftJson, function() {
-                if (draftJson.background) {
-                    canvas.backgroundColor = draftJson.background;
-                }
-                canvas.renderAll();
-                showLoading(false);
-                if (canvas.getObjects().length > 0) {
-                    document.getElementById('step1Controls').style.display = 'none';
-                    document.getElementById('step2Controls').style.display = 'block';
-                    document.getElementById('downloadBlock').style.display = 'block';
-                    
-                    // Re-link objects
-                    frontCardObj = canvas.getObjects().find(o => o.customId === 'front_card');
-                    backCardObj = canvas.getObjects().find(o => o.customId === 'back_card');
-                }
-            });
-        } catch (err) {
-            console.error(err); showLoading(false); alert("❌ Failed to restore draft.");
-        }
-    }
 
     window.addEventListener('load', function() {
+        // 🚀 CRITICAL FIX: Initialize Canvas First
+        canvas = new fabric.Canvas('mainCanvas', {
+            width: 1200, height: 800,
+            backgroundColor: '#0f172a',
+            preserveObjectStacking: true,
+            selectionColor: 'rgba(59, 130, 246, 0.1)',
+            selectionBorderColor: '#3b82f6',
+            selectionLineWidth: 1
+        });
         frontCropBox = new fabric.Rect({
             fill: 'rgba(239, 68, 68, 0.2)', stroke: '#ef4444', strokeWidth: 3,
             cornerColor: '#ef4444', cornerSize: 12, transparentCorners: false,
@@ -458,6 +627,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         });
 
         // Aspect ratio forcing on scale
+        // Aspect ratio forcing on scale
         const forceRatio = (e) => {
             const obj = e.target;
             if (obj === frontCropBox || obj === backCropBox) {
@@ -471,7 +641,49 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 
         canvas.add(frontCropBox, backCropBox);
         setupZoomAndPan();
+
+        // 🚀 Restore Draft IF Exists
+        if (draftJson) {
+            showLoading(true, "Restoring Draft...");
+            canvas.loadFromJSON(draftJson, function() {
+                canvas.renderAll();
+                showLoading(false);
+                if (canvas.getObjects().length > 0) {
+                    document.getElementById('step1Controls').style.display = 'none';
+                    document.getElementById('step2Controls').style.display = 'block';
+                    document.getElementById('downloadBlock').style.display = 'block';
+                    
+                    frontCardObj = canvas.getObjects().find(o => o.customId === 'front_card');
+                    backCardObj = canvas.getObjects().find(o => o.customId === 'back_card');
+                }
+            });
+        }
+
+        // 🚀 Initialize Event Listeners
+        canvas.on('selection:created', onObjectSelected);
+        canvas.on('selection:updated', onObjectSelected);
+        canvas.on('selection:cleared', function() { document.getElementById('textEditControls').style.display = 'none'; });
     });
+
+    function onObjectSelected(opt) {
+        if (opt.target && opt.target.type === 'text') {
+            document.getElementById('textEditControls').style.display = 'block';
+            document.getElementById('textColor').value = opt.target.fill;
+        } else {
+            document.getElementById('textEditControls').style.display = 'none';
+        }
+    }
+
+    function addMobileNumber() {
+        const text = new fabric.IText('Mo. +91 ', {
+            left: canvas.width/2 - 100, top: 150, 
+            fontSize: 22, fontFamily: 'Arial', fontWeight: 'bold', 
+            fill: '#000000', backgroundColor: '#ffffff',
+            padding: 5, cornerSize: 8,
+            selectable: true, customId: 'mobile_num'
+        });
+        canvas.add(text); canvas.setActiveObject(text); canvas.renderAll();
+    }
 
     function showLoading(show, txt = "Processing...") {
         document.getElementById('loadingText').innerText = txt;
@@ -571,15 +783,15 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             canvas.bringToFront(backCropBox);
             
             document.getElementById('cropAdjustBox').style.display = 'block';
-        });
+        }, { crossOrigin: 'anonymous' });
     }
 
-    // Trigger auto-detect when card type changes during adjustment
-    document.getElementById('cardType').addEventListener('change', function() {
+    // Trigger auto-detect logic
+    function triggerAutoDetect() {
         if (frontCropBox && frontCropBox.visible) {
             autoDetectLayout();
         }
-    });
+    }
 
     // ==========================================
     // 🚀 ZOOM & PAN (DRAG) ENGINE 🚀
@@ -623,6 +835,22 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             // PAN Card: Usually at the bottom center
             frontCropBox.set({ left: left + iw * 0.28, top: top + ih * 0.75, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
             backCropBox.set({ left: left + iw * 0.28, top: top + ih * 0.85, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
+        } else if (type === 'janaadhar') {
+            // Jan Aadhaar: Side by side center
+            frontCropBox.set({ left: left + iw * 0.05, top: top + ih * 0.25, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
+            backCropBox.set({ left: left + iw * 0.51, top: top + ih * 0.25, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
+        } else if (type === 'abha') {
+            // ABHA: Side by side bottom
+            frontCropBox.set({ left: left + iw * 0.05, top: top + ih * 0.60, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
+            backCropBox.set({ left: left + iw * 0.51, top: top + ih * 0.60, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
+        } else if (type === 'uan_epfo') {
+            // UAN: Side by side center
+            frontCropBox.set({ left: left + iw * 0.05, top: top + ih * 0.35, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
+            backCropBox.set({ left: left + iw * 0.51, top: top + ih * 0.35, width: iw * 0.44, height: (iw * 0.44) / CARD_ASPECT_RATIO, visible: true });
+        } else if (type === 'ration_card') {
+            // Ration Card: Large front and back
+            frontCropBox.set({ left: left + iw * 0.05, top: top + ih * 0.1, width: iw * 0.9, height: (iw * 0.9) / CARD_ASPECT_RATIO, visible: true });
+            backCropBox.set({ left: left + iw * 0.05, top: top + ih * 0.5, width: iw * 0.9, height: (iw * 0.9) / CARD_ASPECT_RATIO, visible: true });
         } else {
             // Default: Side-by-side center
             frontCropBox.set({ left: left + iw * 0.05, top: top + ih * 0.3, width: cardW, height: cardH, visible: true });
@@ -746,23 +974,145 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 
                 showLoading(false);
                 canvas.renderAll();
-            });
-        });
+            }, { crossOrigin: 'anonymous' });
+        }, { crossOrigin: 'anonymous' });
     }
 
     // ==========================================
     // 🚀 EXPORT: FORCED EXACT 1040x638 SIZE 🚀
     // ==========================================
+    // Removed duplicate definitions
+
+    // (Cleaned up late declaration)
+
+    async function triggerDownloadTransaction(finalBlob, finalName) {
+        if (!finalBlob) { alert('Processing failed. Please try again.'); return; }
+
+        if (!isGuest && userRole !== 'admin' && userRole !== 'master_admin') {
+            let actualCost = serviceRate;
+            let willUsePoints = false;
+            
+            if (actualCost <= 0) {
+                 willUsePoints = false;
+            } 
+            else if (userBalance >= actualCost) {
+                let confirmMsg = `${currency}${actualCost} will be deducted from your wallet to download the final result.\nDo you want to proceed?`;
+                if (!confirm(confirmMsg)) return;
+            } 
+            else if (pointsRate > 0 && userPoints >= pointsRate) {
+                let confirmMsg = `You don't have enough Wallet Balance, but you have ${userPoints} Points.\n${pointsRate} Points will be deducted to download this result.\nDo you want to proceed?`;
+                if (!confirm(confirmMsg)) return;
+                willUsePoints = true;
+            }
+            else {
+                alert(`❌ Insufficient Funds.\nYou need ${currency}${actualCost} or ${pointsRate} Points to download this file.`);
+                return;
+            }
+
+            await triggerWalletAPI(willUsePoints);
+        } else if (isGuest) {
+            if (!confirm("Confirm using your single free daily guest pass to download this file?")) return;
+            await triggerWalletAPI(false);
+        } else {
+            // Admin
+            await triggerWalletAPI(false);
+        }
+
+        executeDownload(finalBlob, finalName);
+    }
+
+    async function triggerWalletAPI(willUsePoints) {
+        showLoading(true, "Verifying Wallet Transaction...");
+        try {
+            let formData = new FormData();
+            formData.append('service_slug', 'smart_card');
+            formData.append('service_type', 'Smart Card Pro');
+            if (willUsePoints) formData.append('use_points', '1');
+
+            let response = await fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
+            let text = await response.text();
+            showLoading(false);
+            
+            try {
+                let result = JSON.parse(text);
+                if (!result.success) {
+                    alert("❌ Error: " + result.message);
+                    throw new Error("Payment failed");
+                }
+                if (isGuest || result.cost <= 0) {
+                    Swal.fire({ icon: 'success', title: 'Success', text: result.message || "✅ Guest pass used!" });
+                } else {
+                    Swal.fire({ 
+                        icon: 'success', 
+                        title: 'Success!', 
+                        html: `Paid from: <b>${result.deducted_type === 'points' ? result.cost + ' Pts' : currency + result.cost}</b>` 
+                    });
+                }
+            } catch(e) { 
+                console.error("JSON Error:", text);
+                Swal.fire({ icon: 'error', title: 'Parse Error', text: "❌ API Server parsing failed. Check internet." });
+                throw e; 
+            }
+        } catch(e) { 
+            Swal.fire({ icon: 'error', title: 'Network Error', text: "❌ Network error processing wallet." });
+            showLoading(false); 
+            throw e; 
+        }
+    }
+
+    function executeDownload(blob, name) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+
     async function handleExport() {
         if (!frontCardObj || !backCardObj) return;
         
-        if (userRole !== 'admin') {
-            let confirmMsg = `${currency}${cardCost} will be deducted from the wallet to download the final cards.\nDo you want to proceed?`;
-            if (!confirm(confirmMsg)) return; 
+        if (userRole !== 'admin' && userRole !== 'master_admin') {
+            let actualCost = serviceRate;
+            let willUsePoints = false;
+            
+            if (actualCost <= 0) {
+                 willUsePoints = false;
+            } 
+            else if (userBalance >= actualCost) {
+                const result = await Swal.fire({
+                    title: 'Confirm Purchase',
+                    text: `${currency}${actualCost} will be deducted from your wallet to download the final cards.`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Deduct & Download',
+                    cancelButtonText: 'No, Cancel'
+                });
+                if (!result.isConfirmed) return;
+            } 
+            else if (pointsRate > 0 && userPoints >= pointsRate) {
+                const result = await Swal.fire({
+                    title: 'Use Points?',
+                    text: `You don't have enough Wallet Balance, but you have ${userPoints} Points. ${pointsRate} Points will be deducted to run this task.`,
+                    icon: 'info',
+                    showCancelButton: true,
+                    confirmButtonText: 'Use Points',
+                    cancelButtonText: 'Cancel'
+                });
+                if (!result.isConfirmed) return;
+                willUsePoints = true;
+            }
+            else {
+                Swal.fire({ icon: 'error', title: 'Insufficient Funds', text: `You need ${currency}${actualCost} or ${pointsRate} Points to download this file.` });
+                return;
+            }
             
             try {
                 let formData = new FormData();
+                formData.append('service_slug', 'smart_card');
                 formData.append('service_type', 'Smart Card PVC');
+                if (willUsePoints) formData.append('use_points', '1');
 
                 let response = await fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
                 let text = await response.text(); 
@@ -771,12 +1121,23 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                     let result = JSON.parse(text);
                     if (result.success) {
                         processFinalDownload();
-                        alert(` ✅ Downloaded!\nNew balance: ${currency}${result.remaining_balance}`);
-                    } else { alert("❌ Error: " + result.message); }
-                } catch (jsonError) { alert("❌ Server error."); }
-            } catch (error) { alert("❌ Network error."); }
+                        Swal.fire({ 
+                            icon: 'success', 
+                            title: 'Downloaded!', 
+                            html: `Successfully processed.<br>Paid from: <b>${result.deducted_type === 'points' ? result.cost + ' Pts' : currency + result.cost}</b>`
+                        });
+                    } else { 
+                        Swal.fire({ icon: 'error', title: 'Transaction Failed', text: result.message });
+                    }
+                } catch (jsonError) { 
+                    Swal.fire({ icon: 'error', title: 'Parse Error', text: 'Server response parsing failed.' });
+                }
+            } catch (error) { 
+                Swal.fire({ icon: 'error', title: 'Network Error', text: 'Could not connect to server.' });
+            }
         } else {
             let formData = new FormData();
+            formData.append('service_slug', 'smart_card');
             formData.append('service_type', 'Smart Card PVC (Admin)');
             fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
             processFinalDownload(); 
@@ -952,7 +1313,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         sysApplyZoom();
     }
     function sysApplyZoom() {
-        const targets = document.querySelectorAll('.canvas-container, .a4-page, .card-preview, canvas#mainCanvas');
+        const targets = document.querySelectorAll('.studio-canvas-layout, .a4-page, .card-preview, canvas#mainCanvas');
         targets.forEach(el => {
             el.style.transform = `scale(${sysCurrentZoom})`;
             el.style.transformOrigin = 'top center';

@@ -22,6 +22,9 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-bold text-dark" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual-pills" type="button" role="tab" aria-controls="manual-pills" aria-selected="false"><i class="fas fa-university me-2 text-warning"></i> Manual Bank Transfer</button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold text-dark" id="points-tab" data-bs-toggle="pill" data-bs-target="#points-pills" type="button" role="tab" aria-controls="points-pills" aria-selected="false"><i class="fas fa-star me-2 text-warning"></i> Buy Points</button>
+                </li>
             </ul>
 
             <!-- TAB CONTENT -->
@@ -53,23 +56,47 @@
                         <i class="fas fa-info-circle me-2"></i> After making the payment to the company account / UPI given below, upload the amount and screenshot. Admin will check and deposit the balance.
                     </div>
                     
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="card bg-light border-0 h-100">
-                                <div class="card-body">
-                                    <h6 class="fw-bold text-primary"><i class="fas fa-university"></i> Bank Account Details</h6>
-                                    <p class="mb-1 small"><strong>Bank:</strong> HDFC Bank Ltd.</p>
-                                    <p class="mb-1 small"><strong>A/C No:</strong> 50200012345678</p>
-                                    <p class="mb-0 small"><strong>IFSC:</strong> HDFC0001234</p>
+                    <?php 
+                    $pdo = connectDB();
+                    $s = fetchOne($pdo, "SELECT * FROM settings WHERE id = 1 LIMIT 1");
+                    ?>
+                    <div class="row mb-4 text-start">
+                        <div class="col-md-7">
+                            <div class="card bg-light border-0 h-100 shadow-sm">
+                                <div class="card-body p-4">
+                                    <h6 class="fw-bold text-primary mb-3"><i class="fas fa-university me-2"></i>Bank Account Details</h6>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Bank Name:</span>
+                                        <span class="fw-bold small"><?= htmlspecialchars($s['manual_bank_name'] ?? 'Not Set') ?></span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Account No:</span>
+                                        <span class="fw-bold small text-primary" style="letter-spacing: 1px;"><?= htmlspecialchars($s['manual_account_number'] ?? 'Not Set') ?></span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">IFSC Code:</span>
+                                        <span class="fw-bold small text-success"><?= htmlspecialchars($s['manual_ifsc_code'] ?? 'Not Set') ?></span>
+                                    </div>
+                                    <?php if(!empty($s['manual_micr_code'])): ?>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">MICR Code:</span>
+                                        <span class="fw-bold small"><?= htmlspecialchars($s['manual_micr_code']) ?></span>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6 mt-3 mt-md-0">
-                            <div class="card bg-light border-0 h-100">
-                                <div class="card-body text-center">
-                                    <h6 class="fw-bold text-primary"><i class="fas fa-qrcode"></i> UPI Payment Details</h6>
-                                    <p class="mb-2 fw-bold text-dark fs-5">bronline@ybl</p>
-                                    <p class="mb-0 small text-muted">Scan or use above UPI ID.</p>
+                        <div class="col-md-5 mt-3 mt-md-0">
+                            <div class="card bg-light border-0 h-100 shadow-sm">
+                                <div class="card-body text-center p-4">
+                                    <h6 class="fw-bold text-primary mb-3"><i class="fas fa-qrcode me-2"></i>UPI / QR Payment</h6>
+                                    <?php if(!empty($s['manual_qr_code_url'])): ?>
+                                        <div class="mb-3">
+                                            <img src="<?= htmlspecialchars($s['manual_qr_code_url']) ?>" alt="Payment QR" class="img-fluid rounded border shadow-sm p-1 bg-white" style="max-height: 120px;">
+                                        </div>
+                                    <?php endif; ?>
+                                    <p class="mb-1 fw-bold text-dark" style="font-size: 1.1rem;"><?= htmlspecialchars($s['manual_upi_id'] ?? 'Not Set') ?></p>
+                                    <div class="badge bg-info-subtle text-info px-3 py-2 rounded-pill"><?= htmlspecialchars($s['manual_upi_name'] ?? 'Manual Transfer') ?></div>
                                 </div>
                             </div>
                         </div>
@@ -97,6 +124,33 @@
                         </button>
                     </form>
                 </div> <!-- END MANUAL TAB -->
+
+                <!-- BUY POINTS TAB -->
+                <div class="tab-pane fade text-center" id="points-pills" role="tabpanel" aria-labelledby="points-tab">
+                    <div class="alert alert-warning border-warning fw-bold text-dark mb-4">
+                        <i class="fas fa-info-circle me-1"></i> You can use your wallet balance to buy reward points. Reward points are used for digital design services.
+                    </div>
+                    
+                    <div class="card border-0 shadow-sm rounded-4 mb-4" style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);">
+                        <div class="card-body p-5">
+                            <i class="fas fa-star text-warning fa-4x mb-3"></i>
+                            <h1 class="display-4 fw-bold text-dark mb-2">25 <span class="fs-2 text-muted">Pts</span></h1>
+                            <h4 class="text-dark fw-bold mb-4">at just ₹100.00</h4>
+                            <div class="p-2 bg-white bg-opacity-50 rounded-pill border border-warning d-inline-block px-4 mb-4">
+                                <span class="text-muted small fw-bold text-uppercase">Recharge Reward System</span>
+                            </div>
+                            
+                            <form action="app/actions.php" method="POST" onsubmit="return confirm('Confirm purchasing 25 points for ₹100?');">
+                                <input type="hidden" name="action" value="buy_points">
+                                <button type="submit" class="btn btn-warning btn-lg w-100 fw-bold shadow-sm rounded-pill py-3">
+                                    <i class="fas fa-shopping-cart me-2"></i> Confirm Purchase
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <p class="text-muted small">Points will be credited instantly from your current wallet balance.</p>
+                </div> <!-- END POINTS TAB -->
 
             </div>
         </div>

@@ -94,6 +94,8 @@ $sqlFinal = "SELECT wa.id, wa.deadline, wa.created_at, wa.fee, wa.task_price, wa
            LIMIT $limit OFFSET $offset";
 
 $activeTasks = fetchAll($pdo, $sqlFinal, $params);
+require_once MODELS_PATH . 'roles.php';
+$dash_perms = getDashboardPermissionsForRole($_SESSION['user_role']);
 ?>
 
 <style>
@@ -107,7 +109,9 @@ $activeTasks = fetchAll($pdo, $sqlFinal, $params);
     .badge-admin { background-color: #0d6efd; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 5px; }
 </style>
 
-<div class="container-fluid worker-dashboard">
+<div class="container-fluid worker-dashboard py-4">
+    <?php if ($dash_perms['show_notice_board']) include VIEWS_PATH . 'components/notice_board.php'; ?>
+
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <div>
             <h1 class="h3 mb-0 text-gray-800">Freelancer Dashboard</h1>
@@ -119,6 +123,7 @@ $activeTasks = fetchAll($pdo, $sqlFinal, $params);
     </div>
 
     <div class="row">
+        <?php if ($dash_perms['show_wallet_card']): ?>
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-primary shadow h-100 py-2 dashboard-card">
                 <div class="card-body">
@@ -150,7 +155,9 @@ $activeTasks = fetchAll($pdo, $sqlFinal, $params);
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
+        <?php if ($dash_perms['show_points_card']): ?>
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-success shadow h-100 py-2 dashboard-card">
                 <div class="card-body">
@@ -180,8 +187,10 @@ $activeTasks = fetchAll($pdo, $sqlFinal, $params);
                 </div>
             </div>
         </div>
+        <?php endif; ?>
     </div>
 
+    <?php if ($dash_perms['show_task_summary']): ?>
     <div class="row">
         <div class="col-xl-3 col-md-6 mb-4">
             <a href="index.php?page=my_freelancer_tasks&status=returned" class="card border-left-danger shadow h-100 py-2 dashboard-card bg-gradient-red">
@@ -240,6 +249,7 @@ $activeTasks = fetchAll($pdo, $sqlFinal, $params);
             </a>
         </div>
     </div>
+    <?php endif; ?>
 
     <div class="row">
         <div class="col-lg-12 mb-4">

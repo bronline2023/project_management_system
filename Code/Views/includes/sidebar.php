@@ -16,6 +16,12 @@ $pdo = connectDB();
 $settings = fetchOne($pdo, "SELECT app_name, app_logo_url FROM settings LIMIT 1");
 $current_user_id = $_SESSION['user_id'] ?? 0;
 
+$header_user = fetchOne($pdo, "SELECT balance, poster_points, role FROM users WHERE id = ?", [$current_user_id]);
+$is_admin_check = in_array($header_user['role'] ?? $user_role, ['admin', 'master_admin']);
+
+$header_balance_display = $is_admin_check ? "Unlimited" : "₹" . number_format((float)($header_user['balance'] ?? 0), 2);
+$header_points_display = $is_admin_check ? "Unlimited" : number_format((int)($header_user['poster_points'] ?? 0)) . " Pts";
+
 // Determine Panel Heading based on SaaS Roles
 $panel_heading = 'Admin Panel';
 switch ($user_role) {
@@ -49,9 +55,10 @@ if (in_array($user_role, ['admin', 'master_admin'])) {
 
 <nav id="sidebar">
     <div class="sidebar-header position-relative">
-        <div id="dismiss" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-2 d-md-none" style="z-index: 1100;">
+        <div id="dismiss" class="btn btn-outline-danger btn-sm position-absolute top-0 end-0 m-2 d-md-none" style="z-index: 1100; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0;">
             <i class="fas fa-times"></i>
         </div>
+
 
         <?php if (!empty($settings['app_logo_url'])): ?>
             <img src="<?= htmlspecialchars($settings['app_logo_url']) ?>" alt="Logo" class="sidebar-logo">
@@ -74,10 +81,21 @@ if (in_array($user_role, ['admin', 'master_admin'])) {
     <ul class="list-unstyled components">
         <p class="menu-heading px-3 text-uppercase small font-weight-bold text-muted">Main Menu</p>
         
-        <?php if (in_array('master_dashboard', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?>
-            <li class="<?= $current_page == 'dashboard' || $current_page == 'master_dashboard' ? 'active' : '' ?>"><a href="?page=dashboard"><i class="fas fa-tachometer-alt"></i> Master Dashboard</a></li>
+        <?php if (in_array($user_role, ['admin', 'master_admin'])): ?>
+            <li class="<?= $current_page == 'master_dashboard' ? 'active' : '' ?>">
+                <a href="?page=master_dashboard" class="text-info fw-bold">
+                    <i class="fas fa-chart-pie"></i> Master Dashboard
+                </a>
+            </li>
+            <li class="<?= $current_page == 'dashboard' ? 'active' : '' ?>">
+                <a href="?page=dashboard" class="fw-bold">
+                    <i class="fas fa-tachometer-alt"></i> Admin Dashboard
+                </a>
+            </li>
         <?php else: ?>
-             <li class="<?= in_array($current_page, ['dashboard', 'user_dashboard', 'retailer_dashboard', 'worker_dashboard', 'district_manager_dashboard', 'super_admin_dashboard', 'hr_dashboard', 'accountant_dashboard']) ? 'active' : '' ?>"><a href="?page=dashboard"><i class="fas fa-home"></i> My Dashboard</a></li>
+            <li class="<?= in_array($current_page, ['dashboard', 'user_dashboard', 'retailer_dashboard', 'worker_dashboard', 'district_manager_dashboard', 'super_admin_dashboard', 'hr_dashboard', 'accountant_dashboard', 'deo_dashboard', 'freelancer_dashboard']) ? 'active' : '' ?>">
+                <a href="?page=dashboard"><i class="fas fa-home"></i> My Dashboard</a>
+            </li>
         <?php endif; ?>
 
         <?php if ($current_user_id > 0 && (in_array('messages', $user_permissions) || in_array($user_role, ['admin', 'master_admin']))): ?>
@@ -135,18 +153,26 @@ if (in_array($user_role, ['admin', 'master_admin'])) {
         </li>
         <?php endif; ?>
 
-        <?php if (in_array('all_tasks', $user_permissions) || in_array('assign_task', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?>
-        <li><a href="#taskManagementSubmenu" data-bs-toggle="collapse" aria-expanded="false" class="dropdown-toggle"><i class="fas fa-tasks"></i> Task Management</a>
-            <ul class="collapse list-unstyled" id="taskManagementSubmenu">
-                <?php if (in_array('all_tasks', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=all_tasks">View All Tasks</a></li><?php endif; ?>
-                <?php if (in_array('assign_task', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=assign_task">Assign New Task</a></li><?php endif; ?>
+        <?php if (in_array($user_role, ['admin', 'master_admin'])): ?>
+            <li class="<?= $current_page == 'manage_notices' ? 'active' : '' ?>">
+                <a href="?page=manage_notices" class="text-info">
+                    <i class="fas fa-bullhorn"></i> Manage Notices
+                </a>
+            </li>
+        <?php endif; ?>
+
+        <?php if (in_array('daily_work_entry', $user_permissions) || in_array('view_daily_reports', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?>
+        <li><a href="#dailyWorkSubmenu" data-bs-toggle="collapse" aria-expanded="false" class="dropdown-toggle" style="color: #6366f1;"><i class="fas fa-calendar-check text-primary"></i> Official Work Tracker</a>
+            <ul class="collapse list-unstyled" id="dailyWorkSubmenu">
+                <?php if (in_array('daily_work_entry', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=daily_work_entry"><i class="fas fa-plus-circle"></i> Daily Work Entry</a></li><?php endif; ?>
+                <?php if (in_array('view_daily_reports', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=my_daily_entries"><i class="fas fa-list-alt"></i> Daily Work Report</a></li><?php endif; ?>
             </ul>
         </li>
         <?php endif; ?>
 
         <?php if (in_array('clients', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=clients"><i class="fas fa-user-tie"></i> Client Management</a></li><?php endif; ?>
         <?php if (in_array('customers', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=customers"><i class="fas fa-user-friends"></i> Customer Management</a></li><?php endif; ?>
-        <?php if (in_array('appointments', $user_permissions) && in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=appointments"><i class="fas fa-calendar-check"></i> Appointments</a></li><?php endif; ?>
+        <?php if (in_array($user_role, ['admin', 'master_admin']) || in_array('appointments', $user_permissions)): ?><li><a href="?page=appointments"><i class="fas fa-calendar-check"></i> Appointments</a></li><?php endif; ?>
         <?php if (in_array('categories', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?><li><a href="?page=categories"><i class="fas fa-folder-tree"></i> Categories</a></li><?php endif; ?>
 
         <?php if (in_array('expenses', $user_permissions) || in_array('manage_withdrawals', $user_permissions) || in_array('manage_salaries', $user_permissions) || in_array($user_role, ['admin', 'master_admin'])): ?>
@@ -214,36 +240,9 @@ if (in_array($user_role, ['admin', 'master_admin'])) {
         if ($isAdmin || $hasAnyDigital): 
         ?>
         <li>
-            <a href="#digitalOnlineSubmenu" data-bs-toggle="collapse" aria-expanded="<?= in_array($current_page, $digital_pages) ? 'true' : 'false' ?>" class="dropdown-toggle" style="background:#0f172a; color:#38bdf8;">
-                <i class="fas fa-laptop-code"></i> Digital Online
+            <a href="?page=digital_services" class="<?= ($current_page == 'digital_services') ? 'active' : '' ?>" style="background:#0f172a; color:#38bdf8;">
+                <i class="fas fa-laptop-code"></i> Digital Services
             </a>
-            <ul class="collapse list-unstyled <?= in_array($current_page, $digital_pages) ? 'show' : '' ?>" id="digitalOnlineSubmenu">
-                
-                <li class="<?= ($current_page == 'digital_service_history') ? 'active' : '' ?>"><a href="?page=digital_service_history"><i class="fas fa-history text-muted"></i> Service History</a></li>
-                <li class="<?= ($current_page == 'digital_drafts') ? 'active' : '' ?>"><a href="?page=digital_drafts"><i class="fas fa-save text-muted"></i> Saved Drafts</a></li>
-
-                <?php if ($isAdmin || in_array('poster_studio', $user_permissions)): ?>
-                    <li class="<?= ($current_page == 'poster_studio') ? 'active' : '' ?>"><a href="?page=poster_studio"><i class="fas fa-paint-brush text-danger"></i> Poster Design</a></li>
-                <?php endif; ?>
-                <?php if ($isAdmin || in_array('resume_builder', $user_permissions)): ?>
-                    <li class="<?= ($current_page == 'resume_builder') ? 'active' : '' ?>"><a href="?page=resume_builder"><i class="fas fa-file-alt text-info"></i> Resume Builder</a></li>
-                <?php endif; ?>
-                <?php if ($isAdmin || in_array('smart_card', $user_permissions)): ?>
-                    <li class="<?= ($current_page == 'smart_card') ? 'active' : '' ?>"><a href="?page=smart_card"><i class="fas fa-id-card text-warning"></i> Smart Card</a></li>
-                <?php endif; ?>
-                <?php if ($isAdmin || in_array('passport_photo', $user_permissions)): ?>
-                    <li class="<?= ($current_page == 'passport_photo') ? 'active' : '' ?>"><a href="?page=passport_photo"><i class="fas fa-id-badge text-primary"></i> Passport Photo Make</a></li>
-                <?php endif; ?>
-                <?php if ($isAdmin || in_array('document_converter', $user_permissions)): ?>
-                    <li class="<?= ($current_page == 'document_converter') ? 'active' : '' ?>"><a href="?page=document_converter"><i class="fas fa-file-export text-success"></i> Document Converter</a></li>
-                <?php endif; ?>
-                <?php if ($isAdmin || in_array('size_converter', $user_permissions)): ?>
-                    <li class="<?= ($current_page == 'size_converter') ? 'active' : '' ?>"><a href="?page=size_converter"><i class="fas fa-expand-arrows-alt text-secondary"></i> Size Converter</a></li>
-                <?php endif; ?>
-                <?php if ($isAdmin || in_array('photo_studio', $user_permissions)): ?>
-                    <li class="<?= ($current_page == 'photo_studio') ? 'active' : '' ?>"><a href="?page=photo_studio"><i class="fas fa-camera-retro" style="color: #6f42c1;"></i> Photo Studio Pro</a></li>
-                <?php endif; ?>
-            </ul>
         </li>
         <?php endif; ?>
 
@@ -253,6 +252,14 @@ if (in_array($user_role, ['admin', 'master_admin'])) {
         <?php if (in_array($user_role, ['retailer', 'district_manager', 'freelancer', 'deo', 'data_entry_operator']) || in_array('digital_studio', $user_permissions)): ?>
             <li class="<?= ($current_page == 'wallet_recharge') ? 'active' : '' ?>">
                 <a href="?page=wallet_recharge" class="text-success fw-bold"><i class="fas fa-wallet"></i> Wallet Recharge</a>
+            </li>
+        <?php endif; ?>
+
+        <?php if (in_array($user_role, ['retailer', 'freelancer'])): ?>
+            <li class="<?= ($current_page == 'digital_service_history') ? 'active' : '' ?>">
+                <a href="?page=digital_service_history" class="text-primary fw-bold">
+                    <i class="fas fa-file-invoice-dollar text-primary"></i> My Usage Reports
+                </a>
             </li>
         <?php endif; ?>
         
@@ -279,12 +286,24 @@ if (in_array($user_role, ['admin', 'master_admin'])) {
 <div id="content" class="w-100">
     <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm mb-4">
         <div class="container-fluid">
-            <button type="button" id="sidebarCollapse" class="btn btn-primary d-md-none me-2">
+            <button type="button" id="sidebarCollapse" class="btn btn-sm btn-primary d-md-none me-2 shadow-sm">
                 <i class="fas fa-bars"></i>
             </button>
+
             <div id="headerClock" class="digital-clock d-none d-sm-block">
                 <i class="far fa-clock"></i> Loading...
             </div>
+
+            <!-- WALLET & POINTS (DESKTOP) -->
+            <div class="ms-auto d-none d-lg-flex align-items-center gap-2 me-3">
+                <span class="badge bg-light text-success border border-success px-3 py-2 rounded-pill shadow-sm fw-bold">
+                    <i class="fas fa-wallet me-1"></i> <?= $header_balance_display ?>
+                </span>
+                <span class="badge bg-light text-dark border border-warning px-3 py-2 rounded-pill shadow-sm fw-bold">
+                    <i class="fas fa-star me-1 text-warning"></i> <?= $header_points_display ?>
+                </span>
+            </div>
+
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent">
                 <span class="navbar-toggler-icon"></span>
             </button>

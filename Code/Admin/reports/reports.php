@@ -13,6 +13,7 @@ if (!defined('ROOT_PATH')) {
     else { die("Config missing. Please run from index.php"); }
 }
 if (!isset($pdo)) { require_once MODELS_PATH . 'db.php'; $pdo = connectDB(); }
+require_once MODELS_PATH . 'reports_helper.php';
 
 // 2. User Identification
 $currentUserId = $_SESSION['user_id'] ?? 0;
@@ -101,6 +102,12 @@ if ($isAdmin || in_array('my_appointments', $_SESSION['user_permissions'] ?? [])
     $appointmentData = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+// F. WALLET & POINTS (Digital)
+$targetId = $isAdmin ? null : $currentUserId;
+$walletRecharges = getWalletRecharges($pdo, $targetId, $startDate, $endDate);
+$pointPurchases = getPointPurchases($pdo, $targetId, $startDate, $endDate);
+$digitalUsage = getDigitalUsage($pdo, $targetId, $startDate, $endDate);
+
 // ---------------------------------------------------------
 // CALCULATIONS
 // ---------------------------------------------------------
@@ -143,6 +150,11 @@ $adminNetProfit = $totalProfit - $totalExpenses;
 // If Negative: User needs to Pay Company.
 $userNetPayable = ($totalWorkerEarning + $totalRecruitEarn) - $totalCashTaken;
 
+// Point Revenue Calculation (Admin Only)
+$totalPointRevenue = 0;
+foreach ($pointPurchases as $pp) {
+    $totalPointRevenue += (float)$pp['amount'];
+}
 ?>
 
 <!DOCTYPE html>
@@ -189,8 +201,8 @@ $userNetPayable = ($totalWorkerEarning + $totalRecruitEarn) - $totalCashTaken;
         <?php if($isAdmin): ?>
             <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-success shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Revenue</div><div class="h5 mb-0 font-weight-bold">₹<?= number_format($totalRevenue, 2) ?></div></div></div></div>
             <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-danger shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Expenses</div><div class="h5 mb-0 font-weight-bold">₹<?= number_format($totalExpenses, 2) ?></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-primary shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Net Profit</div><div class="h5 mb-0 font-weight-bold">₹<?= number_format($adminNetProfit, 2) ?></div></div></div></div>
-            <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-warning shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Pending Payouts</div><div class="h5 mb-0 font-weight-bold">See Below</div></div></div></div>
+            <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-info shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-info text-uppercase mb-1">Points Revenue</div><div class="h5 mb-0 font-weight-bold">₹<?= number_format($totalPointRevenue, 2) ?></div></div></div></div>
+            <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-primary shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Net Profit</div><div class="h5 mb-0 font-weight-bold">₹<?= number_format($adminNetProfit + $totalPointRevenue, 2) ?></div></div></div></div>
         <?php else: ?>
             <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-success shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Earnings</div><div class="h5 mb-0 font-weight-bold">₹<?= number_format($totalWorkerEarning + $totalRecruitEarn, 2) ?></div></div></div></div>
             <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-danger shadow h-100 py-2"><div class="card-body"><div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Cash Taken (Liability)</div><div class="h5 mb-0 font-weight-bold">₹<?= number_format($totalCashTaken, 2) ?></div></div></div></div>
@@ -213,6 +225,9 @@ $userNetPayable = ($totalWorkerEarning + $totalRecruitEarn) - $totalCashTaken;
 
     <ul class="nav nav-tabs mb-3 no-print" id="reportTabs" role="tablist">
         <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tasks">✅ Task Reports</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#digital_usage">📁 Digital Usage</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#recharges">💳 Wallet Recharges</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#points_history">⭐ Points Bought</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#recruitment">📢 Recruitment</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#withdrawals">🏦 Payments</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#appointment">📅 Appointments</button></li>
@@ -332,6 +347,99 @@ $userNetPayable = ($totalWorkerEarning + $totalRecruitEarn) - $totalCashTaken;
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW: DIGITAL USAGE -->
+        <div class="tab-pane fade" id="digital_usage">
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm">
+                            <thead class="bg-light">
+                                <tr><th>Date</th><?php if($isAdmin): ?><th>User</th><?php endif; ?><th>Service</th><th>₹ Deducted</th><th>Pts Deducted</th></tr>
+                            </thead>
+                            <tbody>
+                                <?php if($digitalUsage): foreach($digitalUsage as $du): ?>
+                                <tr>
+                                    <td><?= date('d-m-Y H:i', strtotime($du['created_at'])) ?></td>
+                                    <?php if($isAdmin): ?><td><?= htmlspecialchars($du['user_name']) ?></td><?php endif; ?>
+                                    <td><?= htmlspecialchars($du['service_name']) ?></td>
+                                    <td>₹<?= number_format($du['amount_deducted'], 2) ?></td>
+                                    <td><?= $du['points_deducted'] ?> Pts</td>
+                                </tr>
+                                <?php endforeach; else: ?>
+                                    <tr><td colspan="5" class="text-center">No digital usage recorded.</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW: WALLET RECHARGES -->
+        <div class="tab-pane fade" id="recharges">
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm">
+                            <thead class="bg-light">
+                                <tr><th>Date</th><?php if($isAdmin): ?><th>User</th><?php endif; ?><th>Amount</th><th>Status</th><th>Screenshot</th></tr>
+                            </thead>
+                            <tbody>
+                                <?php if($walletRecharges): foreach($walletRecharges as $wr): ?>
+                                <tr>
+                                    <td><?= date('d-m-Y H:i', strtotime($wr['created_at'])) ?></td>
+                                    <?php if($isAdmin): ?><td><?= htmlspecialchars($wr['user_name']) ?></td><?php endif; ?>
+                                    <td class="fw-bold text-success">₹<?= number_format($wr['amount'], 2) ?></td>
+                                    <td>
+                                        <span class="badge bg-<?= ($wr['status']=='approved')?'success':(($wr['status']=='pending')?'warning':'danger') ?>">
+                                            <?= ucfirst($wr['status']) ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php if($wr['screenshot_path']): ?>
+                                            <a href="uploads/recharge_proofs/<?= $wr['screenshot_path'] ?>" target="_blank" class="btn btn-xs btn-info py-0 px-1">View</a>
+                                        <?php else: ?>
+                                            -
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; else: ?>
+                                    <tr><td colspan="5" class="text-center">No recharges found.</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW: POINT PURCHASES -->
+        <div class="tab-pane fade" id="points_history">
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm">
+                            <thead class="bg-light">
+                                <tr><th>Date</th><?php if($isAdmin): ?><th>User</th><?php endif; ?><th>₹ Spent</th><th>Description</th></tr>
+                            </thead>
+                            <tbody>
+                                <?php if($pointPurchases): foreach($pointPurchases as $pp): ?>
+                                <tr>
+                                    <td><?= date('d-m-Y H:i', strtotime($pp['created_at'])) ?></td>
+                                    <?php if($isAdmin): ?><td><?= htmlspecialchars($pp['user_name']) ?></td><?php endif; ?>
+                                    <td class="fw-bold text-danger">₹<?= number_format($pp['amount'], 2) ?></td>
+                                    <td><?= htmlspecialchars($pp['description']) ?></td>
+                                </tr>
+                                <?php endforeach; else: ?>
+                                    <tr><td colspan="4" class="text-center">No point purchases found.</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

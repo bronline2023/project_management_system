@@ -11,6 +11,11 @@ body { font-family: 'Poppins', sans-serif; background: #f7f9fc; }
 a, a:hover, a:focus { color: inherit; text-decoration: none; transition: all 0.3s; }
 .wrapper { display: flex; width: 100%; align-items: stretch; }
 #content { width: 100%; padding: 20px; min-height: 100vh; transition: all 0.3s; }
+@media (max-width: 768px) {
+    #content { padding: 8px 5px !important; width: 100% !important; overflow-x: hidden; }
+    .container-fluid { padding-left: 5px !important; padding-right: 5px !important; }
+}
+
 
 /* ==============================================
     SIDEBAR DESIGN (FIXED SCROLLING)
@@ -210,20 +215,24 @@ ul.CTAs a.logout:hover { background: #d12b4d; }
 
 /* --- Mobile Responsive Messenger Fixes --- */
 @media (max-width: 768px) {
-    .messenger-container { flex-direction: column; height: 85vh; } /* Reduced height to fit screen */
-    .messenger-sidebar { 
-        width: 100%; 
-        height: 35%; /* Fixed height for user list */
-        border-right: none; 
-        border-bottom: 1px solid #e0e0e0; 
-    }
-    .chat-main { 
-        height: 65%; /* Rest for chat */
-    }
-    .chat-body { padding: 1rem; }
-    #sidebar { margin-left: -260px; position: fixed; height: 100%; z-index: 9999; }
-    #sidebar.active { margin-left: 0; }
+    #content { padding: 8px 5px !important; width: 100% !important; overflow-x: hidden; }
+    .container-fluid { padding-left: 5px !important; padding-right: 5px !important; }
+    
+    /* Dashboard Mobile Refinements */
+    .stat-card { padding: 1rem !important; margin-bottom: 0.75rem !important; }
+    .stat-card .number { font-size: 1.5rem !important; }
+    .stat-card .stat-icon { font-size: 1.8rem !important; }
+    
+    .tile-card { padding: 0.8rem !important; }
+    .tile-value { font-size: 1.1rem !important; }
+    
+    .master-card-value { font-size: 1.6rem !important; }
+    .master-card-body { padding: 1.2rem !important; }
+    
+    .card-header h5 { font-size: 1rem !important; }
+    .table td, .table th { padding: 0.5rem !important; font-size: 0.85rem !important; }
 }
+
 
 /* ==============================================
     DASHBOARD STYLES (Restored)

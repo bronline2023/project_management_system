@@ -26,14 +26,19 @@ $availableBalance = $totalEarnings - $totalWithdrawn - $pendingWithdrawals;
 
 // Fetch recent posts for the table below, including admin_comments
 $recentPosts = getDeoRecruitmentPosts($current_user_id, 'all', '', 5, 0);
+require_once MODELS_PATH . 'roles.php';
+$dash_perms = getDashboardPermissionsForRole($_SESSION['user_role']);
 ?>
 
-<div class="container-fluid">
+<div class="container-fluid py-4">
+    <?php if ($dash_perms['show_notice_board']) include VIEWS_PATH . 'components/notice_board.php'; ?>
+
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">DEO Dashboard</h1>
         <span class="text-muted">Welcome back, <?= htmlspecialchars($current_user_name) ?>!</span>
     </div>
 
+    <?php if ($dash_perms['show_points_card']): ?>
     <div class="card shadow-lg mb-4">
         <div class="card-header card-header-custom bg-primary text-white">
             <h5 class="m-0 font-weight-bold"><i class="fas fa-wallet me-2"></i>My Earnings Overview</h5>
@@ -47,6 +52,7 @@ $recentPosts = getDeoRecruitmentPosts($current_user_id, 'all', '', 5, 0);
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <div class="card shadow-sm rounded-3">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">

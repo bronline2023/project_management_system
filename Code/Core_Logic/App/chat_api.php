@@ -31,13 +31,17 @@ try {
         $messages = getMessages($currentUserId, $chatWithId);
         $status = getUserStatus($chatWithId); 
         
-        // Format Dates correctly here
+        // Format Dates correctly for India (IST)
         foreach($messages as &$msg) {
             $msg['formatted_time'] = date('h:i A', strtotime($msg['created_at']));
             $msg['formatted_date'] = date('d M Y', strtotime($msg['created_at']));
         }
         
-        echo json_encode(['messages' => $messages, 'user_status' => $status, 'user_id' => $currentUserId]);
+        echo json_encode([
+            'messages' => $messages, 
+            'user_status' => $status, 
+            'user_id' => $currentUserId
+        ]);
         exit;
     }
 

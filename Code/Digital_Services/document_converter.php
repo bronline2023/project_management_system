@@ -1,34 +1,45 @@
 <?php
-require_once CORE_INCLUDES_PATH . 'service_paywall.php';
-enforce_service_paywall('document_converter');
-
+// Smart Checkout integrated
 /**
  * views/document_converter.php
  * MASTER STUDIO VERSION: Ultimate Magic Clone Patch (Zero Background Issues) + ConvertAPI
  */
 
-
-
 $pdo = connectDB();
-$card_cost = 5.00; 
 $currency = '₹';
 $user_role = $_SESSION['user_role'] ?? 'guest';
 
+$service_rate = 2.00;
+$points_rate = 0;
+$user_balance = 0.00;
+$user_points = 0;
+$is_custom_rate = false;
+$custom_poster_rate = 0.00;
+
 try {
-    $stmt = $pdo->query("SELECT poster_generation_cost, currency_symbol FROM settings LIMIT 1");
-    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($settings) {
-        $card_cost = isset($settings['poster_generation_cost']) ? (float)$settings['poster_generation_cost'] : 5.00;
-        $currency = isset($settings['currency_symbol']) ? $settings['currency_symbol'] : '₹';
+    $stmt_rate = $pdo->prepare("SELECT price, points_price FROM digital_service_rates WHERE service_slug = 'document_converter' AND is_active = 1");
+    $stmt_rate->execute();
+    $rate_data = $stmt_rate->fetch();
+    if ($rate_data) {
+        $service_rate = (float)$rate_data['price'];
+        $points_rate = (int)$rate_data['points_price'];
     }
 
+    $stmt = $pdo->query("SELECT currency_symbol FROM settings LIMIT 1");
+    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($settings && isset($settings['currency_symbol'])) { $currency = $settings['currency_symbol']; }
+
     if (isset($_SESSION['user_id'])) {
-        $stmt_user = $pdo->prepare("SELECT custom_poster_rate FROM users WHERE id = ?");
+        $stmt_user = $pdo->prepare("SELECT balance, poster_points, custom_poster_rate FROM users WHERE id = ?");
         $stmt_user->execute([$_SESSION['user_id']]);
         $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
-        
-        if ($user_data && isset($user_data['custom_poster_rate']) && $user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
-            $card_cost = (float)$user_data['custom_poster_rate'];
+        if ($user_data) {
+            $user_balance = (float)$user_data['balance'];
+            $user_points = (int)$user_data['poster_points'];
+            if ($user_data['custom_poster_rate'] !== null && $user_data['custom_poster_rate'] !== '') {
+                $custom_poster_rate = (float)$user_data['custom_poster_rate'];
+                $is_custom_rate = true;
+            }
         }
     }
 } catch (Exception $e) {}
@@ -57,12 +68,14 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digital Studio</title>
+    <link rel="icon" type="image/png" href="<?= ASSETS_URL ?>img/br_favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Hind+Vadodara:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -119,7 +132,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-    .pdf-canvas-wrapper { display: none; max-width: 100%; overflow: auto; background: #e2e8f0; padding: 20px; border-radius: 8px; margin: 0 auto; border: 2px solid #cbd5e1; height: 65vh; position: relative;}
+    .studio-canvas-layout { display: none; max-width: 100%; overflow: auto; background: #e2e8f0; padding: 20px; border-radius: 8px; margin: 0 auto; border: 2px solid #cbd5e1; height: 65vh; position: relative;}
 
     .instruction-bar { background: #fef3c7; color: #065f46; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 15px; margin-bottom: 15px; border: 1px solid #a7f3d0; display: none; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}
 
@@ -168,6 +181,24 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         <div class="tool-card" onclick="openTool('ppt_to_pdf', 'PPT to PDF', 'Convert Powerpoint files to PDF', '.ppt,.pptx')">
             <i class="fas fa-file-powerpoint tool-icon icon-orange"></i>
             <div class="tool-title">PPT to PDF</div>
+        </div>
+        <div class="tool-card" onclick="openTool('pdf_to_ppt', 'PDF to PPT', 'Convert PDF to Powerpoint (PPTX)', 'application/pdf')">
+            <i class="fas fa-file-powerpoint tool-icon icon-orange"></i>
+            <div class="tool-title">PDF to PPT</div>
+        </div>
+    </div>
+
+    <div class="section-title text-danger">PDF Manipulation Tools</div>
+    <div class="tools-grid">
+        <div class="tool-card" onclick="openTool('merge_pdf', 'Merge PDF', 'Combine multiple PDFs into one single file', 'application/pdf')">
+            <i class="fas fa-layer-group tool-icon icon-dark"></i>
+            <div class="tool-title text-danger">Merge multiple PDFs</div>
+            <div class="tool-desc">Combine 2 or more PDF documents.</div>
+        </div>
+        <div class="tool-card" onclick="openTool('split_pdf', 'Split PDF', 'Extract individual pages from a PDF', 'application/pdf')">
+            <i class="fas fa-cut tool-icon icon-dark"></i>
+            <div class="tool-title text-danger">Split PDF Pages</div>
+            <div class="tool-desc">Extract pages into separate PDF files.</div>
         </div>
     </div>
 
@@ -255,7 +286,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         <?php endif; ?>
     </div>
 
-    <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper">
+    <div class="studio-canvas-layout" id="pdfCanvasWrapper">
         <canvas id="pdfEditorCanvas"></canvas>
     </div>
 
@@ -283,7 +314,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                     <span class="input-group-text bg-light fw-bold">KB</span>
                 </div>
             </div>
-            <div class="col-md-7 text-end">
+            <div class="col-md-7 text-end" id="previewBtnContainer">
                 <button class="btn btn-info fw-bold w-100 text-white" style="background:#0ea5e9; border:none;" onclick="generateLivePreview()"><i class="fas fa-eye"></i> Check (Live Preview)</button>
             </div>
         </div>
@@ -304,7 +335,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     </div>
 
     <button class="btn-convert" id="btnConvert" style="display: none;" onclick="processConversion()">
-        <i class="fas fa-download"></i> <span id="btnText">Convert & Download <?= (!isset($_SESSION['user_id']) && isset($_COOKIE['guest_service_used'])) ? '' : '('.$currency.$card_cost.')' ?></span>
+        <i class="fas fa-download"></i> <span id="btnText">Convert & Download <?= (!isset($_SESSION['user_id']) && isset($_COOKIE['guest_service_used'])) ? '' : '('.$currency.$service_rate.')' ?></span>
     </button>
 </div>
 
@@ -314,16 +345,38 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 </div>
 
 <script>
-    const userRole = "<?= $_SESSION['user_role'] ?? 'guest' ?>";
-    const cardCost = <?= number_format($card_cost, 2, '.', '') ?>;
-    const currency = "<?= $currency ?>";
-    const baseUrl = "<?= BASE_URL ?>"; 
+    // 0. DEFINITIONS FROM PHP (GLOBAL SCOPE)
     const APP_URL = "<?= APP_URL ?>";
+    const userRole = "<?= $user_role ?>";
+    const currency = "<?= $currency ?>";
+    const serviceRate = <?= $service_rate ?>;
+    const pointsRate = <?= $points_rate ?>;
+    const userBalance = <?= $user_balance ?>;
+    const userPoints = <?= $user_points ?>;
+    const isGuest = (userRole === 'guest' || !userRole);
+    const isCustomRate = <?= $is_custom_rate ? 'true' : 'false' ?>;
+    const customRate = <?= $custom_poster_rate ?>;
+    const baseUrl = "<?= BASE_URL ?>";
+
+    // --- UI UTILITIES ---
+    function showLoading(show, text = "Processing... Please wait.") {
+        const el = document.getElementById('loadingOverlay');
+        const txt = document.getElementById('loadingText');
+        if (el) el.style.display = show ? 'flex' : 'none';
+        if (txt && text) txt.innerText = text;
+    }
+    const hideLoader = () => showLoading(false);
+    const showLoader = (text) => showLoading(true, text);
+
+    function forceSyncAll() {
+        if(typeof syncUIFromCurrentCanvas === 'function') syncUIFromCurrentCanvas();
+    }
 
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
     let currentTool = '';
     let selectedFile = null;
+    let selectedFiles = [];
     let finalCompressedDataUrl = null; 
 
     // 🚀 STUDIO EDITOR VARIABLES 🚀
@@ -342,6 +395,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     function openTool(toolId, title, desc, acceptType) {
         currentTool = toolId;
         selectedFile = null;
+        selectedFiles = [];
         finalCompressedDataUrl = null;
 
         document.getElementById('gridArea').style.display = 'none';
@@ -351,6 +405,14 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         
         const fileInput = document.getElementById('fileInput');
         fileInput.value = ''; fileInput.accept = acceptType;
+        
+        if(toolId === 'merge_pdf') {
+            fileInput.multiple = true;
+            document.getElementById('uploadBox').querySelector('h3').innerText = "Click here to Select Multiple PDFs";
+        } else {
+            fileInput.multiple = false;
+            document.getElementById('uploadBox').querySelector('h3').innerText = "Click here to Select File";
+        }
         
         document.getElementById('fileNameDisplay').innerText = '';
         document.getElementById('btnConvert').style.display = 'none';
@@ -362,7 +424,14 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         document.getElementById('instructionBar').style.display = 'none';
         document.getElementById('uploadBox').style.display = 'block';
 
-        if (['compress_image', 'universal_image', 'jpg_to_pdf', 'pdf_to_jpg'].includes(toolId)) document.getElementById('configPanel').style.display = 'block';
+        if (['compress_image', 'universal_image', 'jpg_to_pdf', 'pdf_to_jpg'].includes(toolId)) {
+            document.getElementById('configPanel').style.display = 'block';
+            if(toolId === 'pdf_to_jpg' || toolId === 'jpg_to_pdf') {
+                document.getElementById('previewBtnContainer').style.display = 'none';
+            } else {
+                document.getElementById('previewBtnContainer').style.display = 'block';
+            }
+        }
         if (API_TOOLS.includes(toolId)) document.getElementById('apiNoticePanel').style.display = 'block';
         if (toolId === 'universal_image') document.getElementById('formatPanel').style.display = 'block';
         else document.getElementById('formatPanel').style.display = 'none';
@@ -378,19 +447,29 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
 
     function handleFileSelect(event) {
         if (event.target.files.length > 0) {
-            selectedFile = event.target.files[0];
-            
-            if(['pdf_to_jpg', 'pdf_to_word', 'pdf_to_excel', 'pdf_to_ppt', 'edit_pdf'].includes(currentTool) && selectedFile.type !== 'application/pdf') {
-                alert('Please select PDF file only.'); return;
-            }
-
-            document.getElementById('fileNameDisplay').innerText = `Selected: ${selectedFile.name}`;
-            
-            if (currentTool === 'edit_pdf') {
-                document.getElementById('uploadBox').style.display = 'none';
-                initPdfEditor();
-            } else if (currentTool !== 'compress_image') {
+            if(currentTool === 'merge_pdf') {
+                selectedFiles = Array.from(event.target.files);
+                let valid = true;
+                selectedFiles.forEach(f => { if(f.type !== 'application/pdf') valid = false; });
+                if(!valid) { Swal.fire({ icon: 'warning', title: 'Invalid File', text: 'Please select PDF files only.' }); return; }
+                
+                document.getElementById('fileNameDisplay').innerText = `Selected: ${selectedFiles.length} PDF files`;
                 document.getElementById('btnConvert').style.display = 'inline-block';
+            } else {
+                selectedFile = event.target.files[0];
+                
+                if(['pdf_to_jpg', 'pdf_to_word', 'pdf_to_excel', 'pdf_to_ppt', 'edit_pdf', 'split_pdf'].includes(currentTool) && selectedFile.type !== 'application/pdf') {
+                    Swal.fire({ icon: 'warning', title: 'Invalid File', text: 'Please select PDF file only.' }); return;
+                }
+
+                document.getElementById('fileNameDisplay').innerText = `Selected: ${selectedFile.name}`;
+                
+                if (currentTool === 'edit_pdf') {
+                    document.getElementById('uploadBox').style.display = 'none';
+                    initPdfEditor();
+                } else if (currentTool !== 'compress_image') {
+                    document.getElementById('btnConvert').style.display = 'inline-block';
+                }
             }
         }
     }
@@ -454,7 +533,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             });
 
         } catch (error) {
-            alert("Error loading PDF: " + error.message);
+            Swal.fire({ icon: 'error', title: 'Load Error', text: "Error loading PDF: " + error.message });
             showLoading(false);
         }
     }
@@ -685,7 +764,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             formData.append('image_data', dataUrl);
             formData.append('document_type', 'PDF Editor Draft');
             
-            fetch(baseUrl + '/app/save_draft.php', { method: 'POST', body: formData })
+            fetch(APP_URL + 'save_draft.php', { method: 'POST', body: formData })
                 .then(res => res.json())
                 .then(data => {
                     showLoading(false);
@@ -702,6 +781,11 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
         if (!selectedFile) return;
         const targetKB = parseInt(document.getElementById('targetKB').value);
         if (!targetKB || targetKB <= 0) return;
+
+        if (!selectedFile.type.startsWith('image/')) {
+            alert("Live preview is only available for images, not PDFs.");
+            return;
+        }
 
         showLoading(true, "Calculating...");
         const reader = new FileReader();
@@ -739,26 +823,130 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                 finalCompressedDataUrl = bestDataUrl; document.getElementById('btnConvert').style.display = 'inline-block';
                 showLoading(false);
             };
+            img.onerror = function() {
+                showLoading(false);
+                alert("Error loading image for preview.");
+            };
             img.src = e.target.result;
+        };
+        reader.onerror = function() {
+            showLoading(false);
         };
         reader.readAsDataURL(selectedFile);
     }
 
-    async function processConversion() {
-        if (!selectedFile) return;
 
-        if (userRole !== 'admin') {
-            let confirmMsg = `${currency}${cardCost} will be deducted from the wallet for this task.\nDo you want to download?`;
-            if (!confirm(confirmMsg)) return; 
+    async function triggerDownloadTransaction(finalBlob, finalName) {
+        if (!finalBlob) { alert('Processing failed. Please try again.'); return; }
+
+        if (!isGuest && userRole !== 'admin' && userRole !== 'master_admin') {
+            let actualCost = serviceRate;
+            let willUsePoints = false;
+            
+            if (actualCost <= 0) {
+                 willUsePoints = false;
+            } 
+            else if (userBalance >= actualCost) {
+                let confirmMsg = `${currency}${actualCost} will be deducted from your wallet to download the final result.\nDo you want to proceed?`;
+                if (!confirm(confirmMsg)) return;
+            } 
+            else if (pointsRate > 0 && userPoints >= pointsRate) {
+                let confirmMsg = `You don't have enough Wallet Balance, but you have ${userPoints} Points.\n${pointsRate} Points will be deducted to download this result.\nDo you want to proceed?`;
+                if (!confirm(confirmMsg)) return;
+                willUsePoints = true;
+            }
+            else {
+                alert(`❌ Insufficient Funds.\nYou need ${currency}${actualCost} or ${pointsRate} Points to download this file.`);
+                return;
+            }
+
+            await triggerWalletAPI(willUsePoints);
+        } else if (isGuest) {
+            if (!confirm("Confirm using your single free daily guest pass to download this file?")) return;
+            await triggerWalletAPI(false);
+        } else {
+            // Admin
+            await triggerWalletAPI(false);
+        }
+
+        executeDownload(finalBlob, finalName);
+    }
+
+    async function triggerWalletAPI(willUsePoints) {
+        showLoading(true, "Verifying Wallet Transaction...");
+        try {
+            let formData = new FormData();
+            formData.append('service_slug', 'document_converter');
+            formData.append('service_type', 'Document Converter Pro');
+            if (willUsePoints) formData.append('use_points', '1');
+
+            let response = await fetch(APP_URL + 'deduct_poster_balance.php', { method: 'POST', body: formData });
+            let text = await response.text();
+            showLoading(false);
+            
             try {
-                let formData = new FormData(); formData.append('service_type', `Document Tool (${currentTool})`);
-                let response = await fetch(baseUrl + 'app/deduct_poster_balance.php', { method: 'POST', body: formData });
-                let text = await response.text(); let result = JSON.parse(text);
-                if (!result.success) { alert("❌ Error: " + result.message); return; }
-            } catch (error) { return; }
+                let result = JSON.parse(text);
+                if (!result.success) {
+                    alert("❌ Error: " + result.message);
+                    throw new Error("Payment failed");
+                }
+                if (isGuest || result.cost <= 0) alert(result.message || "✅ Guest pass used!");
+                else alert(` ✅ Downloaded!\nPaid from: ${result.deducted_type === 'points' ? result.cost + ' Pts' : currency + result.cost}`);
+            } catch(e) { 
+                console.error("JSON Error:", text);
+                alert("❌ API Server parsing failed. Check internet."); 
+                throw e; 
+            }
+        } catch(e) { 
+            alert("❌ Network error processing wallet."); 
+            showLoading(false); 
+            throw e; 
+        }
+    }
+
+    function executeDownload(blob, name) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+
+    async function processConversion() {
+        if (currentTool !== 'merge_pdf' && !selectedFile) return;
+
+        if (userRole !== 'admin' && userRole !== 'master_admin') {
+            let actualCost = serviceRate;
+            let willUsePoints = false;
+            
+            if (actualCost <= 0) {
+                 willUsePoints = false;
+            } 
+            else if (userBalance >= actualCost) {
+                let confirmMsg = `${currency}${actualCost} will be deducted from your wallet for this task.\nDo you want to proceed?`;
+                if (!confirm(confirmMsg)) return;
+            } 
+            else if (pointsRate > 0 && userPoints >= pointsRate) {
+                let confirmMsg = `You don't have enough Wallet Balance, but you have ${userPoints} Points.\n${pointsRate} Points will be deducted to run this task.\nDo you want to proceed?`;
+                if (!confirm(confirmMsg)) return;
+                willUsePoints = true;
+            }
+            else {
+                alert(`❌ Insufficient Funds.\nYou need ${currency}${actualCost} or ${pointsRate} Points to download this file.`);
+                return;
+            }
+
+            await triggerWalletAPI(willUsePoints);
+        } else {
+            // Admin logging
+            await triggerWalletAPI(false);
         }
 
         if (currentTool === 'edit_pdf') { await exportEditedPdf(); }
+        else if (currentTool === 'merge_pdf') { await processMergePdf(); }
+        else if (currentTool === 'split_pdf') { await processSplitPdf(); }
         else if (currentTool === 'universal_image') {
             processUniversalImageConversion();
         } else if (currentTool === 'compress_image') {
@@ -778,6 +966,67 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             byteArrays.push(new Uint8Array(byteNumbers));
         }
         return new Blob(byteArrays, { type: mimeType });
+    }
+
+    async function processMergePdf() {
+        if(!selectedFiles || selectedFiles.length < 2) {
+            alert("Please select at least 2 PDF files to merge."); return;
+        }
+        showLoading(true, "Merging PDFs...");
+        try {
+            const { PDFDocument } = window.PDFLib;
+            const mergedPdf = await PDFDocument.create();
+            for (let file of selectedFiles) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await PDFDocument.load(arrayBuffer);
+                const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                copiedPages.forEach((page) => mergedPdf.addPage(page));
+            }
+            const mergedPdfBytes = await mergedPdf.save();
+            const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+            saveAs(blob, "Merged_Document.pdf");
+            showLoading(false); alert("PDFs Merged Successfully!");
+        } catch(error) {
+            alert("Error in merging PDFs: " + error.message);
+            showLoading(false);
+        }
+    }
+
+    async function processSplitPdf() {
+        if(!selectedFile) return;
+        showLoading(true, "Processing PDF...");
+        try {
+            const arrayBuffer = await selectedFile.arrayBuffer();
+            const { PDFDocument } = window.PDFLib;
+            const pdfDoc = await PDFDocument.load(arrayBuffer);
+            const numberOfPages = pdfDoc.getPageCount();
+            
+            if (numberOfPages === 1) {
+                showLoading(false);
+                Swal.fire({ icon: 'info', title: 'Single Page PDF', text: "This PDF only has 1 page, there is nothing to split." });
+                return;
+            }
+
+            showLoading(true, "Splitting PDF... Creating Zip file...");
+            const zip = new JSZip();
+
+            for(let i=0; i<numberOfPages; i++) {
+                const subDocument = await PDFDocument.create();
+                const [copiedPage] = await subDocument.copyPages(pdfDoc, [i]);
+                subDocument.addPage(copiedPage);
+                const pdfBytes = await subDocument.save();
+                zip.file(`Page_${i+1}.pdf`, pdfBytes);
+            }
+            
+            const zipContent = await zip.generateAsync({type:"blob"});
+            saveAs(zipContent, selectedFile.name.split('.')[0] + "_SplitPages.zip");
+            showLoading(false); 
+            Swal.fire({ icon: 'success', title: 'Task Completed', text: "All splitted pages downloaded in a Zip file!" });
+            
+        } catch(error) {
+            Swal.fire({ icon: 'error', title: 'Split Error', text: "Error in splitting PDF: " + error.message });
+            showLoading(false);
+        }
     }
 
     async function processOfficeConversionAPI() {
@@ -802,9 +1051,13 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                 let fileData = result.Files[0].FileData; let fileName = result.Files[0].FileName;
                 if (fileData) { saveAs(base64ToBlob(fileData), fileName); } 
                 else if (result.Files[0].Url) { let link = document.createElement('a'); link.href = result.Files[0].Url; link.download = fileName; link.click(); }
-                showLoading(false); alert("CONVERTED AND DOWNLOADED!");
+                showLoading(false); 
+                Swal.fire({ icon: 'success', title: 'Success', text: "CONVERTED AND DOWNLOADED!" });
             } else { throw new Error(result.Message || "Unknown Error from Server"); }
-        } catch (error) { alert("❌ Error: File could not be converted."); showLoading(false); }
+        } catch (error) { 
+            Swal.fire({ icon: 'error', title: 'Conversion Failed', text: "Error: File could not be converted." }); 
+            showLoading(false); 
+        }
     }
 
     async function compressImageToBytes(imgOrCanvas, targetBytes, mimeType = 'image/jpeg') {
@@ -846,6 +1099,10 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
     }
 
     async function convertImageToPdf() {
+        if (!selectedFile.type.startsWith('image/')) {
+            alert("Error: Only image files can be converted here.");
+            return;
+        }
         showLoading(true, "Converting to PDF...");
         const targetKB = parseInt(document.getElementById('targetKB').value);
         const targetBytes = (targetKB && targetKB > 0) ? targetKB * 1024 : 0;
@@ -865,10 +1122,13 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
                 const doc = new jsPDF({ orientation: orientation, unit: 'px', format: [pImg.width, pImg.height] });
                 doc.addImage(pImg.src, 'JPEG', 0, 0, pImg.width, pImg.height); 
                 doc.save(selectedFile.name.split('.')[0] + '_converted.pdf');
-                showLoading(false); alert("The PDF has been downloaded!");
+                showLoading(false); 
+                Swal.fire({ icon: 'success', title: 'Done!', text: "The PDF has been downloaded!" });
             };
+            pImg.onerror = function() { showLoading(false); Swal.fire({ icon: 'error', title: 'Error', text: "Error resolving PDF image data." }); }
             pImg.src = processedUrl;
         };
+        img.onerror = function() { showLoading(false); Swal.fire({ icon: 'error', title: 'Error', text: "Error parsing image file." }); }
         img.src = URL.createObjectURL(selectedFile);
     }
 
@@ -882,32 +1142,55 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             try {
                 const typedarray = new Uint8Array(this.result);
                 const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
-                const zip = new JSZip();
                 
-                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                    showLoading(true, `Extracting Page ${pageNum} of ${pdf.numPages}...`);
-                    const page = await pdf.getPage(pageNum);
+                if (pdf.numPages === 1) {
+                    showLoading(true, "Extracting Image...");
+                    const page = await pdf.getPage(1);
                     const viewport = page.getViewport({ scale: 3.0 });
                     const canvas = document.createElement('canvas'); const context = canvas.getContext('2d');
                     canvas.height = viewport.height; canvas.width = viewport.width;
                     await page.render({ canvasContext: context, viewport: viewport }).promise;
                     
+                    let finalBlob;
                     if (targetBytes > 0) {
-                        const blob = await compressImageToBytes(canvas, targetBytes, 'image/jpeg');
-                        const arrayBuffer = await blob.arrayBuffer();
-                        const base64Data = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-                        zip.file(`Page_${pageNum}.jpg`, base64Data, {base64: true});
+                        finalBlob = await compressImageToBytes(canvas, targetBytes, 'image/jpeg');
                     } else {
-                        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                        const base64Data = imgData.replace(/^data:image\/(png|jpeg);base64,/, "");
-                        zip.file(`Page_${pageNum}.jpg`, base64Data, {base64: true});
+                        finalBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
                     }
+                    saveAs(finalBlob, selectedFile.name.split('.')[0] + "_Page_1.jpg");
+                    showLoading(false); 
+                    Swal.fire({ icon: 'success', title: 'Success', text: "Image has been downloaded!" });
+                } else {
+                    const zip = new JSZip();
+                    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                        showLoading(true, `Extracting Page ${pageNum} of ${pdf.numPages}...`);
+                        const page = await pdf.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: 3.0 });
+                        const canvas = document.createElement('canvas'); const context = canvas.getContext('2d');
+                        canvas.height = viewport.height; canvas.width = viewport.width;
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+                        
+                        if (targetBytes > 0) {
+                            const blob = await compressImageToBytes(canvas, targetBytes, 'image/jpeg');
+                            const arrayBuffer = await blob.arrayBuffer();
+                            const base64Data = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+                            zip.file(`Page_${pageNum}.jpg`, base64Data, {base64: true});
+                        } else {
+                            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                            const base64Data = imgData.replace(/^data:image\/(png|jpeg);base64,/, "");
+                            zip.file(`Page_${pageNum}.jpg`, base64Data, {base64: true});
+                        }
+                    }
+                    showLoading(true, "Zipping all images...");
+                    const zipContent = await zip.generateAsync({type:"blob"});
+                    saveAs(zipContent, selectedFile.name.split('.')[0] + "_Images.zip");
+                    showLoading(false); 
+                    Swal.fire({ icon: 'success', title: 'Zipped!', text: "All images have been downloaded in Zip file!" });
                 }
-                showLoading(true, "Zipping all images...");
-                const zipContent = await zip.generateAsync({type:"blob"});
-                saveAs(zipContent, selectedFile.name.split('.')[0] + "_Images.zip");
-                showLoading(false); alert(" ✅ All images have been downloaded in Zip file!");
-            } catch (error) { alert("Error reading PDF: " + error.message); showLoading(false); }
+            } catch (error) { 
+                Swal.fire({ icon: 'error', title: 'Error', text: "Error reading PDF: " + error.message }); 
+                showLoading(false); 
+            }
         };
         fileReader.readAsArrayBuffer(selectedFile);
     }
@@ -936,6 +1219,7 @@ if (isset($_GET['draft_id']) && isset($_SESSION['user_id'])) {
             saveAs(finalBlob, newFilename);
             showLoading(false);
         };
+        img.onerror = function() { showLoading(false); alert("Error resolving image format."); }
         img.src = URL.createObjectURL(selectedFile);
     }
 </script>
